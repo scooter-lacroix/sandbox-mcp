@@ -95,8 +95,10 @@ class WebExportService:
         if not export_name or not isinstance(export_name, str):
             raise ValueError("Export name must be a non-empty string")
 
-        # Strip whitespace
+        # Strip whitespace and normalize Unicode
+        import unicodedata
         sanitized = export_name.strip()
+        sanitized = unicodedata.normalize('NFC', sanitized)
 
         # Check length
         if len(sanitized) > MAX_EXPORT_NAME_LENGTH:
@@ -104,8 +106,9 @@ class WebExportService:
                 f"Export name exceeds maximum length of {MAX_EXPORT_NAME_LENGTH}"
             )
 
-        # Extract only the final path component to prevent traversal
-        sanitized = Path(sanitized).name
+        # Use os.path.basename for robust path component extraction
+        import os
+        sanitized = os.path.basename(sanitized)
 
         # Reject if empty after sanitization
         if not sanitized:
@@ -115,8 +118,11 @@ class WebExportService:
         if sanitized.startswith('.'):
             raise ValueError("Export name cannot start with a dot")
 
-        # Reject path separators (should already be handled by .name, but be explicit)
-        if os.sep in sanitized or (os.altsep and os.altsep in sanitized):
+        # Explicit check for any path separators (belt and suspenders)
+        path_seps = ['/', '\\', os.sep]
+        if os.altsep:
+            path_seps.append(os.altsep)
+        if any(sep in sanitized for sep in path_seps):
             raise ValueError("Export name cannot contain path separators")
 
         # Reject dangerous characters
@@ -275,14 +281,24 @@ class WebExportService:
         export_id = str(uuid.uuid4())[:8]
         final_export_name = sanitized_export_name or f"{app_type}_app_{export_id}"
 
-        # Handle name collisions by adding UUID suffix
+        # Handle name collisions with atomic directory creation
         export_dir = exports_dir / final_export_name
         collision_counter = 0
-        while export_dir.exists():
-            collision_counter += 1
-            export_dir = exports_dir / f"{final_export_name}_{collision_counter}"
-
-        export_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Atomic directory creation to prevent race conditions
+        while True:
+            try:
+                export_dir.mkdir(parents=True, exist_ok=False)
+                break
+            except FileExistsError:
+                collision_counter += 1
+                export_dir = exports_dir / f"{final_export_name}_{collision_counter}"
+                # Safety limit to prevent infinite loops
+                if collision_counter > 1000:
+                    return {
+                        'success': False,
+                        'error': 'Unable to create unique export directory'
+                    }
 
         result: ExportResult = {
             'success': False,
@@ -937,6 +953,11 @@ def get_web_export_service(artifacts_dir: Optional[Path] = None) -> WebExportSer
 
     Returns:
         The singleton WebExportService instance.
+        
+    Note:
+        The artifacts_dir can only be set on first initialization.
+        Subsequent calls with different artifacts_dir will log a warning
+        but return the existing instance.
     """
     global _web_export_service
 
@@ -945,9 +966,13 @@ def get_web_export_service(artifacts_dir: Optional[Path] = None) -> WebExportSer
         with _singleton_lock:
             if _web_export_service is None:
                 _web_export_service = WebExportService(artifacts_dir)
-    elif artifacts_dir and _web_export_service.artifacts_dir != artifacts_dir:
-        # Update artifacts_dir if provided and different
+    elif artifacts_dir is not None:
+        # artifacts_dir already set - log warning if different
         with _singleton_lock:
-            _web_export_service.artifacts_dir = artifacts_dir
+            if _web_export_service.artifacts_dir != artifacts_dir:
+                logger.warning(
+                    "Ignoring artifacts_dir change for singleton WebExportService. "
+                    "Use the instance returned by get_web_export_service()."
+                )
 
     return _web_export_service
