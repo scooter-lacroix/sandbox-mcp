@@ -12,7 +12,6 @@ Security Features:
 - Thread-safe singleton initialization
 """
 
-import asyncio
 import json
 import os
 import re
@@ -22,7 +21,7 @@ import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, List, TypedDict
+from typing import Dict, Any, Optional, List, TypedDict, Callable
 import logging
 
 logger = logging.getLogger(__name__)
@@ -241,7 +240,7 @@ class WebExportService:
         code: str,
         export_name: Optional[str],
         app_type: str,
-        file_templates: Dict[str, callable]
+        file_templates: Dict[str, Callable]
     ) -> ExportResult:
         """
         Common export logic for all app types.
@@ -331,7 +330,7 @@ class WebExportService:
 
         return result
 
-    def _flask_app_templates(self) -> Dict[str, callable]:
+    def _flask_app_templates(self) -> Dict[str, Callable]:
         """Get file templates for Flask app export."""
         def app_template(code: str, name: str) -> str:
             return code
@@ -401,7 +400,7 @@ python app.py
             'README.md': readme_template
         }
 
-    def _streamlit_app_templates(self) -> Dict[str, callable]:
+    def _streamlit_app_templates(self) -> Dict[str, Callable]:
         """Get file templates for Streamlit app export."""
         def app_template(code: str, name: str) -> str:
             return code

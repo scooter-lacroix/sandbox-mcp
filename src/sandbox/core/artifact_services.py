@@ -28,7 +28,7 @@ class ArtifactService:
 
     def __init__(self):
         """Initialize the artifact service."""
-        self._artifact_cache: Dict[str, List[Path]] = {}
+        pass
 
     def categorize(self, filename: str) -> str:
         """
@@ -139,9 +139,6 @@ class ArtifactService:
                 except (OSError, PermissionError):
                     # Skip files we can't access
                     continue
-
-        # Cache the results
-        self._artifact_cache[str(directory)] = artifacts
 
         return artifacts
 

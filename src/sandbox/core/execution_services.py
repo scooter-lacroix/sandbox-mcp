@@ -59,9 +59,6 @@ class ExecutionContext:
         self.cache_hits = 0
         self.cache_misses = 0
 
-        # Cache for resolved venv site-packages
-        self._venv_site_packages_cache: Optional[Path] = None
-
     def _is_valid_project_root(self, path: Path) -> bool:
         """Validate that project root is within acceptable boundaries."""
         # Ensure path is absolute and normalized
