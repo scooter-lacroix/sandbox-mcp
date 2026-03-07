@@ -1,5 +1,11 @@
 """
 Enhanced execution context with persistence and performance optimizations.
+
+Security Note:
+    This module uses pickle for serializing complex Python objects that cannot
+    be represented in JSON. Pickle is NOT secure against malicious data - never
+    load state from untrusted sources. The state_file should be stored in a
+    secure location with appropriate file permissions.
 """
 
 import io
@@ -8,7 +14,7 @@ import sys
 import json
 import uuid
 import time
-import pickle
+import pickle  # SECURITY: Only loads from trusted state files
 import tempfile
 import threading
 from pathlib import Path

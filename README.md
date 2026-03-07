@@ -61,10 +61,11 @@ uv run sandbox-server-stdio
 - **URL Generation**: Returns accessible endpoints
 
 ### 🔒 **Security & Safety**
-- **Command Filtering**: Blocks dangerous operations
-- **Sandboxed Execution**: Isolated environment
-- **Timeout Control**: Configurable execution limits
+- **Command Filtering**: Blocks dangerous shell commands (configurable)
+- **Guarded Execution**: Code runs with resource limits and timeouts
+- **Timeout Control**: Configurable execution limits (default 30s)
 - **Resource Monitoring**: Memory and CPU usage tracking
+- **Note**: This is a *guarded execution environment*, not a strongly isolated sandbox. For production use with untrusted code, consider running in a container or VM.
 
 ### 🔌 **MCP Integration**
 - **Dual Transport**: HTTP and stdio support
