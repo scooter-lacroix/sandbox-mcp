@@ -6,6 +6,11 @@ Security:
     Pickle deserialization is protected with HMAC-SHA256 verification
     to detect tampering. The HMAC key is generated on first initialization
     and stored in the state database.
+
+Database Transaction Management:
+    All database operations use explicit transactions with BEGIN/COMMIT/ROLLBACK.
+    Connection pooling via a dedicated database manager ensures proper resource cleanup.
+    Failed operations are automatically rolled back to prevent partial state corruption.
 """
 
 from __future__ import annotations
@@ -23,7 +28,7 @@ import hmac
 import hashlib
 import secrets
 from pathlib import Path
-from typing import Dict, Any, Optional, Set, List
+from typing import Dict, Any, Optional, Set, List, ContextManager
 import logging
 from contextlib import contextmanager
 from collections import OrderedDict
@@ -32,6 +37,117 @@ import base64
 
 
 logger = logging.getLogger(__name__)
+
+
+class DatabaseTransactionManager:
+    """
+    Manages SQLite database connections and transactions with proper resource cleanup.
+    
+    Features:
+    - Explicit transaction management (BEGIN/COMMIT/ROLLBACK)
+    - Connection pooling with thread-local storage
+    - Automatic rollback on exceptions
+    - Proper resource cleanup in finally blocks
+    """
+    
+    def __init__(self, db_path: Path, timeout: float = 30.0) -> None:
+        """
+        Initialize database transaction manager.
+        
+        Args:
+            db_path: Path to SQLite database file
+            timeout: Connection timeout in seconds
+        """
+        self.db_path = db_path
+        self.timeout = timeout
+        self._local = threading.local()
+        self._lock = threading.Lock()
+        
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get thread-local database connection."""
+        if not hasattr(self._local, 'conn') or self._local.conn is None:
+            self._local.conn = sqlite3.connect(
+                str(self.db_path),
+                timeout=self.timeout,
+                isolation_level=None  # Autocommit mode, we manage transactions manually
+            )
+            self._local.conn.execute('PRAGMA journal_mode=WAL')
+            self._local.conn.execute('PRAGMA synchronous=NORMAL')
+        return self._local.conn
+    
+    def _close_connection(self) -> None:
+        """Close thread-local database connection."""
+        if hasattr(self._local, 'conn') and self._local.conn is not None:
+            try:
+                self._local.conn.close()
+            except Exception as e:
+                logger.warning(f"Error closing database connection: {e}")
+            self._local.conn = None
+    
+    @contextmanager
+    def transaction(self) -> ContextManager[sqlite3.Cursor]:
+        """
+        Context manager for database transactions with automatic rollback on failure.
+        
+        Usage:
+            with db_manager.transaction() as cursor:
+                cursor.execute('INSERT INTO ...')
+                cursor.execute('UPDATE ...')
+            # Commits automatically on success
+            # Rolls back automatically on exception
+        
+        Yields:
+            sqlite3.Cursor for executing queries within the transaction
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Begin explicit transaction
+            cursor.execute('BEGIN IMMEDIATE')
+            yield cursor
+            # Commit on success
+            cursor.execute('COMMIT')
+        except Exception as e:
+            # Rollback on any exception
+            try:
+                cursor.execute('ROLLBACK')
+            except Exception as rollback_error:
+                logger.error(f"Rollback failed: {rollback_error}")
+            logger.error(f"Transaction failed, rolled back: {e}")
+            raise
+        finally:
+            # Always clean up cursor
+            cursor.close()
+    
+    def execute_in_transaction(
+        self,
+        operations: List[tuple[str, tuple[Any, ...]]]
+    ) -> List[Any]:
+        """
+        Execute multiple operations in a single transaction.
+        
+        Args:
+            operations: List of (sql, params) tuples to execute atomically
+            
+        Returns:
+            List of results from each operation
+            
+        Raises:
+            sqlite3.Error: If any operation fails, entire transaction is rolled back
+        """
+        results = []
+        
+        with self.transaction() as cursor:
+            for sql, params in operations:
+                cursor.execute(sql, params)
+                results.append(cursor.fetchall() if cursor.description else cursor.rowcount)
+        
+        return results
+    
+    def close_all(self) -> None:
+        """Close all database connections (for cleanup)."""
+        self._close_connection()
 
 class DirectoryChangeMonitor:
     def __init__(self, default_working_dir: Path, home_dir: Path):
@@ -95,6 +211,9 @@ class PersistentExecutionContext:
         # HMAC key for state integrity verification
         self._state_hmac_key: Optional[bytes] = None
 
+        # Database transaction manager
+        self._db_manager: Optional[DatabaseTransactionManager] = None
+
         # Initialize directories and database
         self._setup_directories()
         self._setup_database()
@@ -127,81 +246,88 @@ class PersistentExecutionContext:
             (self.artifacts_dir / subdir).mkdir(exist_ok=True)
     
     def _setup_database(self):
-        """Initialize SQLite database for state persistence with HMAC support."""
-        with sqlite3.connect(self.state_file) as conn:
-            # Check if we need to migrate the schema
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='execution_state'"
-            )
-            table_exists = cursor.fetchone() is not None
-            
-            # Create execution_state table with HMAC column
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS execution_state (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    type TEXT NOT NULL,
-                    hmac TEXT NOT NULL,
-                    timestamp REAL NOT NULL
+        """Initialize SQLite database for state persistence with HMAC support and transaction management."""
+        # Initialize database transaction manager
+        self._db_manager = DatabaseTransactionManager(self.state_file)
+        
+        try:
+            with self._db_manager.transaction() as cursor:
+                # Check if we need to migrate the schema
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='execution_state'"
                 )
-            ''')
-            
-            # Migrate existing rows without HMAC (set HMAC to empty, will be regenerated on next save)
-            if table_exists:
-                try:
-                    conn.execute('ALTER TABLE execution_state ADD COLUMN hmac TEXT NOT NULL DEFAULT ""')
-                except sqlite3.OperationalError:
-                    # Column already exists
-                    pass
-            
-            # Store/retrieve HMAC key in metadata table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS _metadata (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                )
-            ''')
-            
-            # Get or generate HMAC key
-            cursor = conn.execute(
-                "SELECT value FROM _metadata WHERE key = 'hmac_key'"
-            )
-            row = cursor.fetchone()
-            
-            if row is not None:
-                # Load existing key
-                self._state_hmac_key = base64.b64decode(row[0])
-            else:
-                # Generate new key
-                self._state_hmac_key = secrets.token_bytes(32)
-                conn.execute(
-                    "INSERT INTO _metadata (key, value) VALUES (?, ?)",
-                    ('hmac_key', base64.b64encode(self._state_hmac_key).decode())
-                )
-            
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS execution_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    code TEXT,
-                    result TEXT,
-                    execution_time REAL,
-                    memory_usage INTEGER,
-                    artifacts TEXT,
-                    timestamp REAL
-                )
-            ''')
+                table_exists = cursor.fetchone() is not None
 
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS artifacts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT,
-                    path TEXT,
-                    type TEXT,
-                    size INTEGER,
-                    metadata TEXT,
-                    timestamp REAL
+                # Create execution_state table with HMAC column
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS execution_state (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        hmac TEXT NOT NULL,
+                        timestamp REAL NOT NULL
+                    )
+                ''')
+
+                # Migrate existing rows without HMAC (set HMAC to empty, will be regenerated on next save)
+                if table_exists:
+                    try:
+                        cursor.execute('ALTER TABLE execution_state ADD COLUMN hmac TEXT NOT NULL DEFAULT ""')
+                    except sqlite3.OperationalError:
+                        # Column already exists
+                        pass
+
+                # Store/retrieve HMAC key in metadata table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS _metadata (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL
+                    )
+                ''')
+
+                # Get or generate HMAC key
+                cursor.execute(
+                    "SELECT value FROM _metadata WHERE key = 'hmac_key'"
                 )
-            ''')
+                row = cursor.fetchone()
+
+                if row is not None:
+                    # Load existing key
+                    self._state_hmac_key = base64.b64decode(row[0])
+                else:
+                    # Generate new key
+                    self._state_hmac_key = secrets.token_bytes(32)
+                    cursor.execute(
+                        "INSERT INTO _metadata (key, value) VALUES (?, ?)",
+                        ('hmac_key', base64.b64encode(self._state_hmac_key).decode())
+                    )
+
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS execution_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        code TEXT,
+                        result TEXT,
+                        execution_time REAL,
+                        memory_usage INTEGER,
+                        artifacts TEXT,
+                        timestamp REAL
+                    )
+                ''')
+
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS artifacts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT,
+                        path TEXT,
+                        type TEXT,
+                        size INTEGER,
+                        metadata TEXT,
+                        timestamp REAL
+                    )
+                ''')
+        except Exception as e:
+            logger.error(f"Failed to initialize database: {e}")
+            raise
     
     def _setup_environment(self):
         """Enhanced environment setup with performance optimizations."""
@@ -269,14 +395,19 @@ class PersistentExecutionContext:
         return hmac.compare_digest(computed_hmac, stored_hmac)
 
     def _load_persistent_state(self):
-        """Load persistent execution state from database with HMAC verification."""
+        """Load persistent execution state from database with HMAC verification and proper transaction management."""
+        if self._db_manager is None:
+            logger.error("Database manager not initialized")
+            return
+            
         try:
-            with sqlite3.connect(self.state_file) as conn:
-                cursor = conn.execute(
+            with self._db_manager.transaction() as cursor:
+                cursor.execute(
                     'SELECT key, value, type, hmac FROM execution_state ORDER BY timestamp DESC'
                 )
+                rows = cursor.fetchall()
 
-                for key, value_str, type_str, stored_hmac in cursor:
+                for key, value_str, type_str, stored_hmac in rows:
                     try:
                         # Decode the value
                         if type_str == 'pickle':
@@ -303,43 +434,53 @@ class PersistentExecutionContext:
             logger.warning(f"Failed to load persistent state: {e}")
 
     def save_persistent_state(self):
-        """Save current execution state to database with HMAC protection."""
+        """Save current execution state to database with HMAC protection and proper transaction management."""
+        if self._db_manager is None:
+            logger.error("Database manager not initialized")
+            return
+            
         with self._lock:
             try:
-                with sqlite3.connect(self.state_file) as conn:
-                    # Clear existing state
-                    conn.execute('DELETE FROM execution_state')
+                # Prepare all operations for atomic execution
+                operations = []
+                
+                # First operation: clear existing state
+                operations.append(('DELETE FROM execution_state', ()))
+                
+                # Prepare INSERT operations for each state item
+                for key, value in self.globals_dict.items():
+                    if key.startswith('_'):  # Skip internal variables
+                        continue
 
-                    # Save current state
-                    for key, value in self.globals_dict.items():
-                        if key.startswith('_'):  # Skip internal variables
-                            continue
-
+                    try:
+                        # Try JSON serialization first
+                        value_str = json.dumps(value)
+                        type_str = 'json'
+                        data_for_hmac = value_str.encode('utf-8')
+                    except (TypeError, ValueError):
+                        # Fall back to pickle for complex objects
                         try:
-                            # Try JSON serialization first
-                            value_str = json.dumps(value)
-                            type_str = 'json'
-                            data_for_hmac = value_str.encode('utf-8')
-                        except (TypeError, ValueError):
-                            # Fall back to pickle for complex objects
-                            try:
-                                pickled = pickle.dumps(value)
-                                value_str = base64.b64encode(pickled).decode()
-                                type_str = 'pickle'
-                                data_for_hmac = pickled
-                            except Exception:
-                                continue  # Skip non-serializable objects
+                            pickled = pickle.dumps(value)
+                            value_str = base64.b64encode(pickled).decode()
+                            type_str = 'pickle'
+                            data_for_hmac = pickled
+                        except Exception:
+                            continue  # Skip non-serializable objects
 
-                        # Compute HMAC for integrity verification
-                        state_hmac = self._compute_state_hmac(data_for_hmac)
-
-                        conn.execute(
-                            'INSERT OR REPLACE INTO execution_state (key, value, type, hmac, timestamp) VALUES (?, ?, ?, ?, ?)',
-                            (key, value_str, type_str, state_hmac, time.time())
-                        )
-
+                    # Compute HMAC for integrity verification
+                    state_hmac = self._compute_state_hmac(data_for_hmac)
+                    
+                    operations.append((
+                        'INSERT OR REPLACE INTO execution_state (key, value, type, hmac, timestamp) VALUES (?, ?, ?, ?, ?)',
+                        (key, value_str, type_str, state_hmac, time.time())
+                    ))
+                
+                # Execute all operations atomically
+                self._db_manager.execute_in_transaction(operations)
+                
             except Exception as e:
                 logger.error(f"Failed to save persistent state: {e}")
+                # Transaction manager handles rollback automatically
     
     @contextmanager
     def capture_output(self):
