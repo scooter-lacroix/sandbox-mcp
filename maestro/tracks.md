@@ -34,6 +34,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 - CI/CD: docs consistency checks, E2E tests (15 tests)
 
 **Known Limitations (Documented for Future Work):**
-- Pickle HMAC verification for state file integrity
-- Disk space validation before export creation
-- Database transaction management improvements
+- Disk space validation before export creation (DoS prevention)
+- Database transaction management improvements (resource leak prevention)
