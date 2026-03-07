@@ -15,8 +15,8 @@ from typing import Any, Dict, List, Optional
 
 from .base_sandbox import BaseSandbox
 from .execution import Execution
-from ..mcp_sandbox_server_stdio import ExecutionContext, monkey_patch_matplotlib, monkey_patch_pil
 from ..core.execution_context import PersistentExecutionContext
+from ..core.patching import get_patch_manager
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class LocalSandbox(BaseSandbox):
     """
     Local sandbox implementation that uses the existing MCP server functionality.
-    
+
     This provides secure local execution with artifact capture and virtual environment support.
     """
 
@@ -35,14 +35,15 @@ class LocalSandbox(BaseSandbox):
         # Force remote=False for local sandboxes
         kwargs["remote"] = False
         super().__init__(**kwargs)
-        
+
         # Initialize local execution context with persistence
         self._execution_context = PersistentExecutionContext()
         self._execution_globals = self._execution_context.globals_dict
-        
-        # Apply monkey patches for artifact capture
-        monkey_patch_matplotlib()
-        monkey_patch_pil()
+
+        # Apply monkey patches for artifact capture using core service
+        patch_manager = get_patch_manager()
+        patch_manager.patch_matplotlib()
+        patch_manager.patch_pil()
 
     async def get_default_image(self) -> str:
         """

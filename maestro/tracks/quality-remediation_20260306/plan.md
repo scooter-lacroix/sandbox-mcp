@@ -98,11 +98,11 @@ Consolidate duplicate execution context and shared behavior into core
   - [x] Subtask: Create `src/sandbox/core/artifact_services.py`
   - [x] Subtask: Move artifact capture logic from servers
   - [x] Subtask: Update servers to use core artifact services
-- [~] Task: Extract monkey-patching to core utilities
-  - [ ] Subtask: Write failing tests for patching utilities
-  - [ ] Subtask: Create `src/sandbox/core/patching.py`
-  - [ ] Subtask: Move matplotlib/PIL patching from servers
-- [ ] Task: Fix SDK coupling to server implementation
+- [x] Task: Extract monkey-patching to core utilities
+  - [x] Subtask: Write failing tests for patching utilities
+  - [x] Subtask: Create `src/sandbox/core/patching.py`
+  - [x] Subtask: Move matplotlib/PIL patching from servers
+- [~] Task: Fix SDK coupling to server implementation
   - [ ] Subtask: Write failing tests for SDK independence from server
   - [ ] Subtask: Remove ExecutionContext import from local_sandbox.py
   - [ ] Subtask: Use core services instead
