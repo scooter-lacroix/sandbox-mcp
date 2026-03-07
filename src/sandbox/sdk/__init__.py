@@ -5,7 +5,13 @@ This module provides a unified interface for both local sandbox execution
 and remote microsandbox-style execution with microVM isolation.
 """
 
-__version__ = "0.3.0"
+# Version is read from package metadata to ensure consistency
+import importlib.metadata
+
+try:
+    __version__ = importlib.metadata.version("sandbox")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "0.3.0-dev"
 
 from .base_sandbox import BaseSandbox
 from .local_sandbox import LocalSandbox

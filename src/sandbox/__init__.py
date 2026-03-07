@@ -6,7 +6,13 @@ designed for secure and feature-rich code execution with artifact management
 and web application support.
 """
 
-__version__ = "0.3.0"
+import importlib.metadata
+
+try:
+    __version__ = importlib.metadata.version("sandbox")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "0.3.0-dev"
+
 __author__ = "Sandbox Development Team"
 __description__ = "Enhanced Python code execution sandbox with microsandbox integration and FastMCP server support"
 

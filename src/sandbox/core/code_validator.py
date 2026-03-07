@@ -71,7 +71,8 @@ class CodeValidator:
         """Check basic Python syntax."""
         try:
             ast.parse(code)
-            return {'valid': True, 'issues': []}\n        except SyntaxError as e:
+            return {'valid': True, 'issues': []}
+        except SyntaxError as e:
             return {
                 'valid': False,
                 'issues': [f"Syntax error at line {e.lineno}: {e.msg}"]
@@ -85,62 +86,62 @@ class CodeValidator:
     def _apply_auto_fixes(self, code: str) -> str:
         """Apply automatic code formatting fixes."""
         fixed_code = code
-        
-        # Fix 1: Remove trailing backslashes from strings
-        fixed_code = re.sub(r'(["\'])([^"\']*?)\\+\1', r'\1\2\1', fixed_code)
-        
-        # Fix 2: Convert Windows-style paths to Unix-style
-        fixed_code = re.sub(r'\\\\', '/', fixed_code)
-        
-        # Fix 3: Fix common path issues
-        fixed_code = re.sub(r'(["\'])\\.', r'\1.', fixed_code)
-        
-        # Fix 4: Ensure proper artifact directory usage
+
+        # Fix: Remove trailing backslashes from strings (only at end of line)
+        # This fixes incomplete escape sequences without breaking legitimate escapes
+        fixed_code = re.sub(r'(["\'])\\+\s*$', r'\1', fixed_code, flags=re.MULTILINE)
+
+        # Fix: Convert Windows-style paths to Unix-style in string literals
+        fixed_code = re.sub(r'(["\'])[^"\']*\\\\[^"\']*\1', 
+                           lambda m: m.group(0).replace('\\\\', '/'), 
+                           fixed_code)
+
+        # Fix 5: Ensure proper artifact directory usage
         fixed_code = re.sub(
-            r'(["\'])/sandbox/artifacts/', 
-            r'\1/artifacts/', 
+            r'(["\'])/sandbox/artifacts/',
+            r'\1/artifacts/',
             fixed_code
         )
-        
-        # Fix 5: Add missing imports for common operations
+
+        # Fix 6: Add missing imports for common operations
         fixed_code = self._add_missing_imports(fixed_code)
-        
+
         return fixed_code
     
     def _add_missing_imports(self, code: str) -> str:
         """Add commonly needed imports if they're missing."""
         imports_to_add = []
-        
+
         # Check for matplotlib usage
         if any(pattern in code for pattern in ['plt.', 'matplotlib']):
             if 'import matplotlib.pyplot' not in code:
                 imports_to_add.append('import matplotlib.pyplot as plt')
-        
+
         # Check for numpy usage
         if any(pattern in code for pattern in ['np.', 'numpy']):
             if 'import numpy' not in code:
                 imports_to_add.append('import numpy as np')
-        
+
         # Check for pandas usage
         if any(pattern in code for pattern in ['pd.', 'pandas']):
             if 'import pandas' not in code:
                 imports_to_add.append('import pandas as pd')
-        
+
         # Check for os operations
         if any(pattern in code for pattern in ['os.', 'makedirs', 'listdir']):
             if 'import os' not in code:
                 imports_to_add.append('import os')
-        
+
         # Check for Path operations
         if 'Path(' in code:
             if 'from pathlib import Path' not in code:
                 imports_to_add.append('from pathlib import Path')
-        
+
         # Add imports at the beginning
         if imports_to_add:
-            import_block = '\\n'.join(imports_to_add) + '\\n\\n'
+            import_block = '\n'.join(imports_to_add) + '\n\n'
             return import_block + code
-        
+
         return code
     
     def _check_common_issues(self, code: str) -> List[str]:
@@ -425,13 +426,13 @@ class CodeFormatter:
     def format_for_display(code: str) -> str:
         """Format code for display purposes."""
         # Add line numbers
-        lines = code.split('\\n')
+        lines = code.split('\n')
         formatted_lines = []
-        
+
         for i, line in enumerate(lines, 1):
             formatted_lines.append(f"{i:3d} | {line}")
-        
-        return '\\n'.join(formatted_lines)
+
+        return '\n'.join(formatted_lines)
     
     @staticmethod
     def highlight_issues(code: str, issues: List[str]) -> str:
@@ -439,12 +440,11 @@ class CodeFormatter:
         # This is a simplified version - in a real implementation,
         # you'd want to use a proper syntax highlighter
         highlighted = code
-        
+
         for issue in issues:
             if "line" in issue.lower():
                 # Extract line number from issue description
-                import re
-                match = re.search(r'line (\\d+)', issue)
+                match = re.search(r'line (\d+)', issue)
                 if match:
                     line_num = int(match.group(1))
                     # Mark the problematic line
@@ -452,7 +452,7 @@ class CodeFormatter:
                         f"# Line {line_num}",
                         f"# Line {line_num} ⚠️ {issue}"
                     )
-        
+
         return highlighted
     
     @staticmethod
@@ -472,48 +472,48 @@ for dir_path in artifact_dirs:
 # Add current directory to path
 sys.path.insert(0, '/artifacts')
 
-print(f"🚀 Execution started at {datetime.now()}")
-print(f"📁 Working directory: {os.getcwd()}")
+print(f"🚀 Execution started at {{datetime.now()}}")
+print(f"📁 Working directory: {{os.getcwd()}}")
 print(f"📂 Artifact directory: /artifacts")
 print("-" * 50)
 
 try:
     # User code starts here
 {code}
-    
+
     print("-" * 50)
     print("✅ Execution completed successfully!")
-    
+
     # List generated artifacts
     if os.path.exists('/artifacts'):
         artifacts = []
         for root, dirs, files in os.walk('/artifacts'):
             for file in files:
                 artifacts.append(os.path.join(root, file))
-        
+
         if artifacts:
-            print(f"📁 Generated {len(artifacts)} artifacts:")
+            print(f"📁 Generated {{len(artifacts)}} artifacts:")
             for artifact in artifacts[:10]:  # Show first 10
-                print(f"  - {artifact}")
+                print(f"  - {{artifact}}")
             if len(artifacts) > 10:
-                print(f"  ... and {len(artifacts) - 10} more")
+                print(f"  ... and {{len(artifacts) - 10}} more")
         else:
             print("📄 No artifacts generated")
 
 except Exception as e:
     print("-" * 50)
     print("❌ Execution failed!")
-    print(f"Error: {str(e)}")
+    print(f"Error: {{str(e)}}")
     print("\\nTraceback:")
     traceback.print_exc()
-    
+
     # Save error log
     with open('/artifacts/error_log.txt', 'w') as f:
-        f.write(f"Error occurred at {datetime.now()}\\n")
-        f.write(f"Error: {str(e)}\\n")
-        f.write(f"Traceback:\\n{traceback.format_exc()}")
+        f.write(f"Error occurred at {{datetime.now()}}\\n")
+        f.write(f"Error: {{str(e)}}\\n")
+        f.write(f"Traceback:\\n{{traceback.format_exc()}}")
 '''
-        
+
         # Indent the user code
-        indented_code = '\\n'.join(f'    {line}' for line in code.split('\\n'))
+        indented_code = '\n'.join(f'    {line}' for line in code.split('\n'))
         return wrapper.format(code=indented_code)

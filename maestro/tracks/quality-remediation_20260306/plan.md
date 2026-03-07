@@ -10,24 +10,23 @@
 ### Goal
 Fix blocking syntax errors and make package importable
 
-- [ ] Task: Fix `code_validator.py` syntax error
-  - [ ] Subtask: Write failing test for CodeValidator import
-  - [ ] Subtask: Remove literal `\n` at line 74
-  - [ ] Subtask: Verify `python -m compileall src` passes
-- [ ] Task: Add missing `aiohttp` dependency to pyproject.toml
-  - [ ] Subtask: Write test for remote sandbox imports
-  - [ ] Subtask: Add aiohttp to dependencies
-  - [ ] Subtask: Verify `import sandbox` succeeds
-- [ ] Task: Create tests directory structure
-  - [ ] Subtask: Create tests/ directory with __init__.py
-  - [ ] Subtask: Create tests/unit/ subdirectory
-  - [ ] Subtask: Create tests/integration/ subdirectory
-  - [ ] Subtask: Create tests/fixtures/ subdirectory
-- [ ] Task: Write smoke test for package import
-  - [ ] Subtask: Create test_import_smoke.py
-  - [ ] Subtask: Test that `import sandbox` succeeds
-  - [ ] Subtask: Test that all main submodules are importable
-- [ ] Task: Maestro - Phase Verification and Checkpoint 'Critical Syntax & Runtime Fixes' (Protocol in workflow.md)
+- [x] Task: Fix `code_validator.py` syntax error
+  - [x] Subtask: Write failing test for CodeValidator import
+  - [x] Subtask: Remove literal `\n` at line 74
+  - [x] Subtask: Verify `python -m compileall src` passes
+- [x] Task: Add missing `aiohttp` dependency to pyproject.toml
+  - [x] Subtask: Add aiohttp to dependencies
+  - [x] Subtask: Verify `import sandbox` succeeds
+- [x] Task: Create tests directory structure
+  - [x] Subtask: Create tests/ directory with __init__.py
+  - [x] Subtask: Create tests/unit/ subdirectory
+  - [x] Subtask: Create tests/integration/ subdirectory
+  - [x] Subtask: Create tests/fixtures/ subdirectory
+- [x] Task: Write smoke test for package import
+  - [x] Subtask: Create test_import_smoke.py
+  - [x] Subtask: Test that `import sandbox` succeeds
+  - [x] Subtask: Test that all main submodules are importable
+- [~] Task: Maestro - Phase Verification and Checkpoint 'Critical Syntax & Runtime Fixes' (Protocol in workflow.md)
 
 ---
 

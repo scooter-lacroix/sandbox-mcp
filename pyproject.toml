@@ -9,6 +9,7 @@ description = "Python code execution sandbox with FastMCP server integration"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "aiohttp>=3.9.0",
     "fastmcp>=2.10.5",
     "ffmpeg-python==0.2.0",
     "ipython>=9.4.0",
