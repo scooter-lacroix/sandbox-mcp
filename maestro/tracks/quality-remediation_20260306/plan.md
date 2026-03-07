@@ -50,7 +50,7 @@ Implement dependency extras and fix version inconsistencies
   - [x] Subtask: Document Python 3.11+ requirement (not 3.9+)
   - [x] Subtask: Remove or qualify undocumented features (Flask/Streamlit)
   - [x] Subtask: Add supported feature matrix to README
-- [~] Task: Maestro - Phase Verification and Checkpoint 'Dependency & Packaging Architecture' (Protocol in workflow.md)
+- [x] Task: Maestro - Phase Verification and Checkpoint 'Dependency & Packaging Architecture' (Protocol in workflow.md) [checkpoint: 11a5d08]
 
 ---
 
