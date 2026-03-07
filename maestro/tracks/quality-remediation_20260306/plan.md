@@ -115,16 +115,16 @@ Consolidate duplicate execution context and shared behavior into core
 ### Goal
 Split oversized stdio server into focused modules
 
-- [ ] Task: Split execution/session service module
-  - [ ] Subtask: Write tests for session service module
-  - [ ] Subtask: Create `src/sandbox/server/session_service.py`
-  - [ ] Subtask: Move session logic from stdio server
-  - [ ] Subtask: Verify <500 lines per module
-- [ ] Task: Split artifact service module
-  - [ ] Subtask: Write tests for server artifact service
-  - [ ] Subtask: Create `src/sandbox/server/artifact_service.py`
-  - [ ] Subtask: Move artifact logic from stdio server
-- [ ] Task: Split web export service module
+- [x] Task: Split execution/session service module
+  - [x] Subtask: Write tests for session service module
+  - [x] Subtask: Create `src/sandbox/server/session_service.py`
+  - [x] Subtask: Move session logic from stdio server
+  - [x] Subtask: Verify <500 lines per module
+- [x] Task: Split artifact service module
+  - [x] Subtask: Write tests for server artifact service
+  - [x] Subtask: Create `src/sandbox/server/artifact_service.py`
+  - [x] Subtask: Move artifact logic from stdio server
+- [~] Task: Split web export service module
   - [ ] Subtask: Write tests for web export service
   - [ ] Subtask: Create `src/sandbox/server/web_export_service.py`
   - [ ] Subtask: Move Flask/Streamlit logic from stdio server
