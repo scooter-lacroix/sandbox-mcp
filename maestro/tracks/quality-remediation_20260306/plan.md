@@ -154,11 +154,11 @@ Remove eager imports and reduce coupling
   - [x] Subtask: Remove server module imports from `src/sandbox/__init__.py`
   - [x] Subtask: Remove eager imports from `src/sandbox/sdk/__init__.py`
   - [x] Subtask: Export only stable primitives
-- [~] Task: Implement lazy imports for optional features
-  - [~] Subtask: Write tests for optional feature loading
-  - [~] Subtask: Create lazy import helpers
-  - [~] Subtask: Apply to remote sandbox, node sandbox
-  - [~] Subtask: Apply to web app features
+- [x] Task: Implement lazy imports for optional features [PENDING_COMMIT]
+  - [x] Subtask: Write tests for optional feature loading (22 tests)
+  - [x] Subtask: Create lazy import helpers (lazy_imports.py with LazyImport, LazyClass)
+  - [x] Subtask: Apply to remote sandbox, node sandbox (use require_feature for aiohttp)
+  - [x] Subtask: Apply to web app features (pre-defined lazy imports for flask, streamlit)
 - [x] Task: Verify import performance
   - [x] Subtask: Benchmark package import time
   - [x] Subtask: Verify memory usage on import

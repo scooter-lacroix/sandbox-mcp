@@ -2,26 +2,33 @@
 Remote sandbox implementation for the enhanced Sandbox SDK.
 """
 
-import uuid
-from typing import Optional
+from __future__ import annotations
 
-import aiohttp
+import uuid
+from typing import TYPE_CHECKING, Optional
 
 from .base_sandbox import BaseSandbox
 from .execution import Execution
+from ..utils.lazy_imports import require_feature
+
+if TYPE_CHECKING:
+    import aiohttp
 
 
 class RemoteSandbox(BaseSandbox):
     """
     Remote sandbox implementation that communicates with a microsandbox server.
-    
+
     This provides secure remote execution with microVM isolation.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: object) -> None:
         """
         Initialize a remote sandbox instance.
         """
+        # Require aiohttp for remote sandbox
+        self._aiohttp = require_feature("remote sandbox", "aiohttp")
+        
         # Force remote=True for remote sandboxes
         kwargs["remote"] = True
         super().__init__(**kwargs)

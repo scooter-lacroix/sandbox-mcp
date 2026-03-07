@@ -2,26 +2,33 @@
 Node.js-specific sandbox implementation for the enhanced Sandbox SDK.
 """
 
-import uuid
-from typing import Optional
+from __future__ import annotations
 
-import aiohttp
+import uuid
+from typing import TYPE_CHECKING, Optional
 
 from .base_sandbox import BaseSandbox
 from .execution import Execution
+from ..utils.lazy_imports import require_feature
+
+if TYPE_CHECKING:
+    import aiohttp
 
 
 class NodeSandbox(BaseSandbox):
     """
     Node.js-specific sandbox for executing JavaScript code.
-    
+
     Currently only supports remote execution via microsandbox server.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: object) -> None:
         """
         Initialize a Node.js sandbox instance.
         """
+        # Require aiohttp for Node sandbox
+        self._aiohttp = require_feature("Node.js sandbox", "aiohttp")
+        
         # Force remote=True for Node sandboxes (no local implementation yet)
         kwargs["remote"] = True
         super().__init__(**kwargs)
