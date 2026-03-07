@@ -35,4 +35,3 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 **Known Limitations (Documented for Future Work):**
 - Disk space validation before export creation (DoS prevention)
-- Database transaction management improvements (resource leak prevention)
