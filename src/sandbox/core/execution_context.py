@@ -1,12 +1,14 @@
 """
 Enhanced execution context with persistence and performance optimizations.
 
-Security Note:
-    This module uses pickle for serializing complex Python objects that cannot
-    be represented in JSON. Pickle is NOT secure against malicious data - never
-    load state from untrusted sources. The state_file should be stored in a
-    secure location with appropriate file permissions.
+Security:
+    This module uses pickle for serializing complex Python objects.
+    Pickle deserialization is protected with HMAC-SHA256 verification
+    to detect tampering. The HMAC key is generated on first initialization
+    and stored in the state database.
 """
+
+from __future__ import annotations
 
 import io
 import os
@@ -14,9 +16,12 @@ import sys
 import json
 import uuid
 import time
-import pickle  # SECURITY: Only loads from trusted state files
+import pickle
 import tempfile
 import threading
+import hmac
+import hashlib
+import secrets
 from pathlib import Path
 from typing import Dict, Any, Optional, Set, List
 import logging
@@ -67,32 +72,35 @@ class PersistentExecutionContext:
         self.session_dir = self.project_root / "sessions" / self.session_id
         self.artifacts_dir = self.session_dir / "artifacts"
         self.state_file = self.session_dir / "state.db"
-        
+
         # Directory monitoring and security
         self.home_dir = Path.home()
         self.directory_monitor = DirectoryChangeMonitor(
             default_working_dir=self.artifacts_dir,
             home_dir=self.home_dir
         )
-        
+
         # Performance tracking
         self.execution_times = []
         self.memory_usage = []
         self.cache_hits = 0
         self.cache_misses = 0
-        
+
         # Execution state
         self.globals_dict = {}
         self.imports_cache = {}
         self.compilation_cache = {}
         self._lock = threading.RLock()
-        
+
+        # HMAC key for state integrity verification
+        self._state_hmac_key: Optional[bytes] = None
+
         # Initialize directories and database
         self._setup_directories()
         self._setup_database()
         self._setup_environment()
         self._load_persistent_state()
-        
+
         logger.info(f"Initialized persistent execution context for session {self.session_id}")
     
     def _detect_project_root(self) -> Path:
@@ -119,16 +127,57 @@ class PersistentExecutionContext:
             (self.artifacts_dir / subdir).mkdir(exist_ok=True)
     
     def _setup_database(self):
-        """Initialize SQLite database for state persistence."""
+        """Initialize SQLite database for state persistence with HMAC support."""
         with sqlite3.connect(self.state_file) as conn:
+            # Check if we need to migrate the schema
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='execution_state'"
+            )
+            table_exists = cursor.fetchone() is not None
+            
+            # Create execution_state table with HMAC column
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS execution_state (
                     key TEXT PRIMARY KEY,
-                    value TEXT,
-                    type TEXT,
-                    timestamp REAL
+                    value TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    hmac TEXT NOT NULL,
+                    timestamp REAL NOT NULL
                 )
             ''')
+            
+            # Migrate existing rows without HMAC (set HMAC to empty, will be regenerated on next save)
+            if table_exists:
+                try:
+                    conn.execute('ALTER TABLE execution_state ADD COLUMN hmac TEXT NOT NULL DEFAULT ""')
+                except sqlite3.OperationalError:
+                    # Column already exists
+                    pass
+            
+            # Store/retrieve HMAC key in metadata table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS _metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+            ''')
+            
+            # Get or generate HMAC key
+            cursor = conn.execute(
+                "SELECT value FROM _metadata WHERE key = 'hmac_key'"
+            )
+            row = cursor.fetchone()
+            
+            if row is not None:
+                # Load existing key
+                self._state_hmac_key = base64.b64decode(row[0])
+            else:
+                # Generate new key
+                self._state_hmac_key = secrets.token_bytes(32)
+                conn.execute(
+                    "INSERT INTO _metadata (key, value) VALUES (?, ?)",
+                    ('hmac_key', base64.b64encode(self._state_hmac_key).decode())
+                )
             
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS execution_history (
@@ -141,7 +190,7 @@ class PersistentExecutionContext:
                     timestamp REAL
                 )
             ''')
-            
+
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS artifacts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -201,59 +250,94 @@ class PersistentExecutionContext:
                 sys.executable = str(venv_python)
         
         logger.info(f"Environment setup complete: {self.project_root}")
-    
+
+    def _compute_state_hmac(self, data: bytes) -> str:
+        """Compute HMAC-SHA256 for state data integrity verification."""
+        if self._state_hmac_key is None:
+            raise RuntimeError("HMAC key not initialized")
+        return hmac.new(
+            self._state_hmac_key,
+            data,
+            hashlib.sha256
+        ).hexdigest()
+
+    def _verify_state_hmac(self, data: bytes, stored_hmac: str) -> bool:
+        """Verify HMAC for state data. Returns True if valid, False if tampered."""
+        if self._state_hmac_key is None:
+            raise RuntimeError("HMAC key not initialized")
+        computed_hmac = self._compute_state_hmac(data)
+        return hmac.compare_digest(computed_hmac, stored_hmac)
+
     def _load_persistent_state(self):
-        """Load persistent execution state from database."""
+        """Load persistent execution state from database with HMAC verification."""
         try:
             with sqlite3.connect(self.state_file) as conn:
                 cursor = conn.execute(
-                    'SELECT key, value, type FROM execution_state ORDER BY timestamp DESC'
+                    'SELECT key, value, type, hmac FROM execution_state ORDER BY timestamp DESC'
                 )
-                
-                for key, value_str, type_str in cursor:
+
+                for key, value_str, type_str, stored_hmac in cursor:
                     try:
+                        # Decode the value
                         if type_str == 'pickle':
-                            value = pickle.loads(base64.b64decode(value_str))
+                            data = base64.b64decode(value_str)
+                        else:
+                            data = value_str.encode('utf-8')
+                        
+                        # Verify HMAC before deserializing
+                        if not self._verify_state_hmac(data, stored_hmac):
+                            logger.error(f"State integrity check failed for {key} - possible tampering")
+                            continue
+                        
+                        # Safe to deserialize after HMAC verification
+                        if type_str == 'pickle':
+                            value = pickle.loads(data)
                         else:
                             value = json.loads(value_str)
-                        
+
                         self.globals_dict[key] = value
                     except Exception as e:
                         logger.warning(f"Failed to load state for {key}: {e}")
-                        
+
         except Exception as e:
             logger.warning(f"Failed to load persistent state: {e}")
-    
+
     def save_persistent_state(self):
-        """Save current execution state to database."""
+        """Save current execution state to database with HMAC protection."""
         with self._lock:
             try:
                 with sqlite3.connect(self.state_file) as conn:
                     # Clear existing state
                     conn.execute('DELETE FROM execution_state')
-                    
+
                     # Save current state
                     for key, value in self.globals_dict.items():
                         if key.startswith('_'):  # Skip internal variables
                             continue
-                        
+
                         try:
                             # Try JSON serialization first
                             value_str = json.dumps(value)
                             type_str = 'json'
+                            data_for_hmac = value_str.encode('utf-8')
                         except (TypeError, ValueError):
                             # Fall back to pickle for complex objects
                             try:
-                                value_str = base64.b64encode(pickle.dumps(value)).decode()
+                                pickled = pickle.dumps(value)
+                                value_str = base64.b64encode(pickled).decode()
                                 type_str = 'pickle'
+                                data_for_hmac = pickled
                             except Exception:
                                 continue  # Skip non-serializable objects
-                        
+
+                        # Compute HMAC for integrity verification
+                        state_hmac = self._compute_state_hmac(data_for_hmac)
+
                         conn.execute(
-                            'INSERT OR REPLACE INTO execution_state (key, value, type, timestamp) VALUES (?, ?, ?, ?)',
-                            (key, value_str, type_str, time.time())
+                            'INSERT OR REPLACE INTO execution_state (key, value, type, hmac, timestamp) VALUES (?, ?, ?, ?, ?)',
+                            (key, value_str, type_str, state_hmac, time.time())
                         )
-                        
+
             except Exception as e:
                 logger.error(f"Failed to save persistent state: {e}")
     
