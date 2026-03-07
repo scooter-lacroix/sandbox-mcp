@@ -128,19 +128,19 @@ Split oversized stdio server into focused modules
   - [x] Subtask: Write tests for web export service
   - [x] Subtask: Create `src/sandbox/server/web_export_service.py`
   - [x] Subtask: Move Flask/Streamlit logic from stdio server
-- [~] Task: Split MCP tool registration module
-  - [~] Subtask: Write tests for tool registration
-  - [~] Subtask: Create `src/sandbox/server/tool_registry.py`
-  - [~] Subtask: Move FastMCP tool definitions
-- [~] Task: Split REPL UX/help text module
-  - [~] Subtask: Write tests for REPL helpers
-  - [~] Subtask: Create `src/sandbox/server/repl_helpers.py`
-  - [~] Subtask: Move REPL and magic command logic
-- [~] Task: Refactor stdio server main file
-  - [~] Subtask: Write tests for refactored stdio server
-  - [~] Subtask: Reduce main file to imports and wiring only
-  - [~] Subtask: Verify <500 lines for main file
-- [~] Task: Maestro - Phase Verification and Checkpoint 'Server Refactoring' (Protocol in workflow.md)
+- [x] Task: Split MCP tool registration module [checkpoint: 36e23ec]
+  - [x] Subtask: Write tests for tool registration
+  - [x] Subtask: Create `src/sandbox/server/tool_registry.py`
+  - [x] Subtask: Move FastMCP tool definitions
+- [x] Task: Split REPL UX/help text module [checkpoint: 36e23ec]
+  - [x] Subtask: Write tests for REPL helpers
+  - [x] Subtask: Create `src/sandbox/server/repl_helpers.py`
+  - [x] Subtask: Move REPL and magic command logic
+- [x] Task: Refactor stdio server main file [checkpoint: 36e23ec]
+  - [x] Subtask: Write tests for refactored stdio server
+  - [x] Subtask: Reduce main file to imports and wiring only
+  - [x] Subtask: Verify <500 lines for main file
+- [x] Task: Maestro - Phase Verification and Checkpoint 'Server Refactoring' (Protocol in workflow.md) [checkpoint: 36e23ec]
 
 ---
 
@@ -223,7 +223,7 @@ Ensure all acceptance criteria met and document improvements
   - [x] Subtask: Confirm pytest collects 15+ tests (160 passing)
   - [x] Subtask: Confirm compileall passes
   - [x] Subtask: Confirm version consistency
-  - [~] Subtask: Confirm stdio server <500 lines/module (2727 lines - not refactored)
+  - [x] Subtask: Confirm stdio server <500 lines/module (302 lines after refactor)
   - [x] Subtask: Confirm single ExecutionContext in core
 - [~] Task: Update CHANGELOG with remediation summary
   - [~] Subtask: Document all fixes and improvements
@@ -236,4 +236,84 @@ Ensure all acceptance criteria met and document improvements
   - [x] Subtask: Conduct comprehensive review of all changes
   - [x] Subtask: Address any remaining issues (dead code removed, type fixes)
   - [x] Subtask: Verify production readiness
-- [x] Task: Maestro - Phase Verification and Checkpoint 'Final Verification & Documentation' (Protocol in workflow.md)
+- [x] Task: Maestro - Phase Verification and Checkpoint 'Final Verification & Documentation'
+
+---
+
+## Quality Notes - Code Patterns from Phase 5 Refactor
+
+**Reference Implementation:** The Phase 5 refactoring (commit `36e23ec`) established quality patterns that MUST be followed for all future work.
+
+### Type Safety Standards
+```python
+from __future__ import annotations  # Always first import for forward references
+
+# Use union syntax: str | None instead of Optional[str]
+# Use explicit return types: -> str, -> bool, -> Dict[str, Any]
+# Use Callable with full signature: Callable[[str, Optional[str]], str]
+```
+
+### Dependency Injection Pattern
+```python
+# NEVER use global ctx directly in helpers
+# ALWAYS pass dependencies explicitly:
+def execute_helper(
+    code: str,
+    ctx: Any,
+    logger: Any,
+    resource_manager: Any,
+) -> str:
+    ...
+```
+
+### Dataclass for Structured Data
+```python
+@dataclass
+class MagicCommandHandlers:
+    """Collection of magic command handlers."""
+    artifacts_magic: Callable[[str], str]
+    install_magic: Callable[[str], str]
+    packages_magic: Callable[[str], str]
+```
+
+### Error Handling Pattern
+```python
+try:
+    # Operation
+except SpecificException as e:
+    logger.warning(f"Descriptive message: {e}")
+    return {"status": "error", "message": "..."}
+except Exception as exc:
+    logger.error(f"Critical error: {exc}")
+    raise  # or return error response
+```
+
+### Module Organization
+- **One responsibility per module** (e.g., `help_text.py` only has help text)
+- **Wrapper pattern**: `tool_registry.py` wraps helpers, doesn't duplicate logic
+- **Import aliases**: `from X import func as func_helper` for clarity
+
+### Documentation Standards
+- Every function has a docstring describing purpose, args, return value
+- Class docstrings explain role in architecture
+- Inline comments explain WHY, not WHAT
+
+### Testing Standards
+- Test files mirror source structure (`test_tool_registry.py` → `tool_registry.py`)
+- 234 tests with 2 skipped = 99%+ pass rate
+- Tests verify both success AND error paths
+
+### Files Demonstrating Quality Patterns
+1. `src/sandbox/server/tool_registry.py` - Type-safe registry with dependency injection
+2. `src/sandbox/server/repl_helpers.py` - Dataclass usage, EnhancedREPL facade pattern
+3. `src/sandbox/server/execution_helpers.py` - Comprehensive error handling, monkey patching
+4. `src/sandbox/server/help_text.py` - Clean documentation strings, network checks
+5. `src/sandbox/mcp_sandbox_server_stdio.py` (302 lines) - Minimal wiring, imports only
+
+### Guidance for Phases 6-9
+- Follow type hint patterns exactly
+- Use dependency injection, never globals
+- Add dataclasses for structured configurations
+- Maintain comprehensive error handling
+- Keep docstrings on all public functions
+- Write tests for both success and failure cases

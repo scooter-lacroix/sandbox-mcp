@@ -3,16 +3,16 @@
   "type": "refactor",
   "status": "in_progress",
   "created_at": "2026-03-06T22:18:27Z",
-  "updated_at": "2026-03-06T23:45:00Z",
+  "updated_at": "2026-03-07T18:58:12Z",
   "description": "Complete remediation of Sandbox MCP Server - fix all critical issues, add tests, refactor architecture, and establish CI/CD pipeline",
   "progress": {
-    "phases_completed": 4,
+    "phases_completed": 5,
     "total_phases": 9,
-    "current_phase": 5,
-    "current_phase_name": "Server Refactoring",
-    "tests_passing": 117,
+    "current_phase": 6,
+    "current_phase_name": "Import Architecture Cleanup",
+    "tests_passing": 234,
     "tests_skipped": 2,
-    "test_files_added": 13,
+    "test_files_added": 16,
     "core_services_created": [
       "ExecutionContextService",
       "ArtifactService",
@@ -20,7 +20,16 @@
     ],
     "server_services_created": [
       "SessionService",
-      "ServerArtifactService"
+      "ServerArtifactService",
+      "ToolRegistry",
+      "EnhancedREPL",
+      "help_text helpers",
+      "execution helpers",
+      "artifact helpers",
+      "manim helpers",
+      "package helpers",
+      "shell helpers",
+      "info helpers"
     ],
     "files_refactored": [
       "src/sandbox/core/execution_services.py",
@@ -28,16 +37,38 @@
       "src/sandbox/core/patching.py",
       "src/sandbox/server/session_service.py",
       "src/sandbox/server/artifact_service.py",
+      "src/sandbox/server/web_export_service.py",
+      "src/sandbox/server/tool_registry.py",
+      "src/sandbox/server/repl_helpers.py",
+      "src/sandbox/server/help_text.py",
+      "src/sandbox/server/execution_helpers.py",
+      "src/sandbox/server/artifact_helpers.py",
+      "src/sandbox/server/manim_helpers.py",
+      "src/sandbox/server/package_helpers.py",
+      "src/sandbox/server/shell_helpers.py",
+      "src/sandbox/server/info_helpers.py",
+      "src/sandbox/mcp_sandbox_server_stdio.py",
       "src/sandbox/sdk/local_sandbox.py"
     ],
+    "checkpoints": {
+      "phase_1": "d94b818",
+      "phase_2": "11a5d08",
+      "phase_3": "fa0ebfd",
+      "phase_4": "a9d642c",
+      "phase_5": "36e23ec",
+      "web_export_service_split": "6bd34bf"
+    },
     "key_achievements": [
       "Fixed critical syntax error in code_validator.py",
       "Added missing aiohttp dependency",
-      "Established test infrastructure (117 tests)",
+      "Established test infrastructure (234 passing unit tests, 2 skipped)",
       "Fixed version inconsistency (now reads from package metadata)",
       "Extracted core services (execution, artifact, patching)",
       "Decoupled SDK from server implementation",
-      "Started server refactoring (2727 lines → modular)"
+      "Completed stdio server refactor into focused helper modules",
+      "Reduced mcp_sandbox_server_stdio.py from 2727 lines to 302 lines",
+      "Added dedicated tests for tool registry, REPL helpers, and refactored stdio server",
+      "Verified compileall, sandbox import, and MCP stdio server startup after refactor"
     ]
   }
 }
