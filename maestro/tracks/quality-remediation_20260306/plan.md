@@ -128,19 +128,21 @@ Split oversized stdio server into focused modules
   - [x] Subtask: Write tests for web export service
   - [x] Subtask: Create `src/sandbox/server/web_export_service.py`
   - [x] Subtask: Move Flask/Streamlit logic from stdio server
-- [x] Task: Split MCP tool registration module [f4a6a18]
-  - [x] Subtask: Write tests for tool registration
-  - [x] Subtask: Create `src/sandbox/server/tool_registry.py`
-  - [x] Subtask: Move FastMCP tool definitions
-- [x] Task: Split REPL UX/help text module [f4a6a18]
-  - [x] Subtask: Write tests for REPL helpers
-  - [x] Subtask: Create `src/sandbox/server/repl_helpers.py`
-  - [x] Subtask: Move REPL and magic command logic
-- [x] Task: Refactor stdio server main file [f4a6a18]
-  - [x] Subtask: Write tests for refactored stdio server
-  - [x] Subtask: Reduce main file to imports and wiring only
-  - [x] Subtask: Verify <500 lines for main file
-- [x] Task: Maestro - Phase Verification and Checkpoint 'Server Refactoring' (Protocol in workflow.md) [f4a6a18]
+- [~] Task: Split MCP tool registration module
+  - [ ] Subtask: Write tests for tool registration
+  - [ ] Subtask: Create `src/sandbox/server/tool_registry.py`
+  - [ ] Subtask: Move FastMCP tool definitions
+  - Note: Attempted implementation created non-functional stub code; removed in ae98244
+- [~] Task: Split REPL UX/help text module
+  - [ ] Subtask: Write tests for REPL helpers
+  - [ ] Subtask: Create `src/sandbox/server/repl_helpers.py`
+  - [ ] Subtask: Move REPL and magic command logic
+- [~] Task: Refactor stdio server main file
+  - [ ] Subtask: Write tests for refactored stdio server
+  - [ ] Subtask: Reduce main file to imports and wiring only
+  - [ ] Subtask: Verify <500 lines for main file
+- [x] Task: Maestro - Phase Verification and Checkpoint 'Server Refactoring' (Protocol in workflow.md) [58ed589]
+  - Note: Phase partially complete; web export service done, tool registry/REPL/server refactor deferred
 
 ---
 
@@ -154,16 +156,17 @@ Remove eager imports and reduce coupling
   - [x] Subtask: Remove server module imports from `src/sandbox/__init__.py`
   - [x] Subtask: Remove eager imports from `src/sandbox/sdk/__init__.py`
   - [x] Subtask: Export only stable primitives
-- [x] Task: Implement lazy imports for optional features
-  - [x] Subtask: Write tests for optional feature loading
-  - [x] Subtask: Create lazy import helpers
-  - [x] Subtask: Apply to remote sandbox, node sandbox
-  - [x] Subtask: Apply to web app features
+- [~] Task: Implement lazy imports for optional features
+  - [~] Subtask: Write tests for optional feature loading
+  - [~] Subtask: Create lazy import helpers
+  - [~] Subtask: Apply to remote sandbox, node sandbox
+  - [~] Subtask: Apply to web app features
 - [x] Task: Verify import performance
   - [x] Subtask: Benchmark package import time
   - [x] Subtask: Verify memory usage on import
   - [x] Subtask: Document before/after metrics
 - [x] Task: Maestro - Phase Verification and Checkpoint 'Import Architecture Cleanup' (Protocol in workflow.md)
+  - Note: Core services extracted; lazy imports partially implemented
 
 ---
 
@@ -185,8 +188,7 @@ Align security claims with implementation and fix pickle concerns
   - [x] Subtask: Update feature descriptions to match actual capabilities
   - [x] Subtask: Add version/Python support consistency checks
 - [x] Task: Maestro - Phase Verification and Checkpoint 'Security & Documentation Alignment' (Protocol in workflow.md)
-
----
+  - Note: Security hardening implemented in WebExportService
 
 ## Phase 8: CI/CD Infrastructure
 
@@ -203,16 +205,15 @@ Add automated quality gates
   - [x] Subtask: Configure pytest in CI
   - [x] Subtask: Add coverage reporting
   - [x] Subtask: Fail build on coverage drop
-- [x] Task: Add docs consistency checks
-  - [x] Subtask: Create script to check version consistency
-  - [x] Subtask: Create script to check Python version consistency
-  - [x] Subtask: Add checks to CI pipeline
-- [x] Task: Add golden path end-to-end test
-  - [x] Subtask: Write E2E test for execution + artifacts
-  - [x] Subtask: Add E2E test to CI
+- [~] Task: Add docs consistency checks
+  - [~] Subtask: Create script to check version consistency
+  - [~] Subtask: Create script to check Python version consistency
+  - [~] Subtask: Add checks to CI pipeline
+- [~] Task: Add golden path end-to-end test
+  - [~] Subtask: Write E2E test for execution + artifacts
+  - [~] Subtask: Add E2E test to CI
 - [x] Task: Maestro - Phase Verification and Checkpoint 'CI/CD Infrastructure' (Protocol in workflow.md)
-
----
+  - Note: Core quality gates established (compileall, pytest, import smoke)
 
 ## Phase 9: Final Verification & Documentation
 
@@ -221,20 +222,20 @@ Ensure all acceptance criteria met and document improvements
 
 - [x] Task: Verify all acceptance criteria
   - [x] Subtask: Confirm `import sandbox` succeeds
-  - [x] Subtask: Confirm pytest collects 15+ tests
+  - [x] Subtask: Confirm pytest collects 15+ tests (160 passing)
   - [x] Subtask: Confirm compileall passes
   - [x] Subtask: Confirm version consistency
-  - [x] Subtask: Confirm stdio server <500 lines/module
+  - [~] Subtask: Confirm stdio server <500 lines/module (2727 lines - not refactored)
   - [x] Subtask: Confirm single ExecutionContext in core
-- [x] Task: Update CHANGELOG with remediation summary
-  - [x] Subtask: Document all fixes and improvements
-  - [x] Subtask: Add upgrade notes for users
-- [x] Task: Create before/after metrics report
-  - [x] Subtask: Document startup time improvement
-  - [x] Subtask: Document memory usage improvement
-  - [x] Subtask: Document test coverage growth
+- [~] Task: Update CHANGELOG with remediation summary
+  - [~] Subtask: Document all fixes and improvements
+  - [~] Subtask: Add upgrade notes for users
+- [~] Task: Create before/after metrics report
+  - [~] Subtask: Document startup time improvement
+  - [~] Subtask: Document memory usage improvement
+  - [x] Subtask: Document test coverage growth (0 -> 160 tests)
 - [x] Task: Final Tzar of Excellence review
   - [x] Subtask: Conduct comprehensive review of all changes
-  - [x] Subtask: Address any remaining issues
+  - [x] Subtask: Address any remaining issues (dead code removed, type fixes)
   - [x] Subtask: Verify production readiness
 - [x] Task: Maestro - Phase Verification and Checkpoint 'Final Verification & Documentation' (Protocol in workflow.md)
