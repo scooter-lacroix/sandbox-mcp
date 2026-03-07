@@ -1,8 +1,43 @@
 {
   "track_id": "quality-remediation_20260306",
   "type": "refactor",
-  "status": "new",
+  "status": "in_progress",
   "created_at": "2026-03-06T22:18:27Z",
-  "updated_at": "2026-03-06T22:18:27Z",
-  "description": "Complete remediation of Sandbox MCP Server - fix all critical issues, add tests, refactor architecture, and establish CI/CD pipeline"
+  "updated_at": "2026-03-06T23:45:00Z",
+  "description": "Complete remediation of Sandbox MCP Server - fix all critical issues, add tests, refactor architecture, and establish CI/CD pipeline",
+  "progress": {
+    "phases_completed": 4,
+    "total_phases": 9,
+    "current_phase": 5,
+    "current_phase_name": "Server Refactoring",
+    "tests_passing": 117,
+    "tests_skipped": 2,
+    "test_files_added": 13,
+    "core_services_created": [
+      "ExecutionContextService",
+      "ArtifactService",
+      "PatchManager"
+    ],
+    "server_services_created": [
+      "SessionService",
+      "ServerArtifactService"
+    ],
+    "files_refactored": [
+      "src/sandbox/core/execution_services.py",
+      "src/sandbox/core/artifact_services.py",
+      "src/sandbox/core/patching.py",
+      "src/sandbox/server/session_service.py",
+      "src/sandbox/server/artifact_service.py",
+      "src/sandbox/sdk/local_sandbox.py"
+    ],
+    "key_achievements": [
+      "Fixed critical syntax error in code_validator.py",
+      "Added missing aiohttp dependency",
+      "Established test infrastructure (117 tests)",
+      "Fixed version inconsistency (now reads from package metadata)",
+      "Extracted core services (execution, artifact, patching)",
+      "Decoupled SDK from server implementation",
+      "Started server refactoring (2727 lines → modular)"
+    ]
+  }
 }
