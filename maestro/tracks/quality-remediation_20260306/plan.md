@@ -88,22 +88,22 @@ Build comprehensive test suite with TDD
 ### Goal
 Consolidate duplicate execution context and shared behavior into core
 
-- [ ] Task: Extract shared execution context to core
-  - [ ] Subtask: Write tests for unified ExecutionContext interface
-  - [ ] Subtask: Create `src/sandbox/core/execution_services.py`
-  - [ ] Subtask: Move duplicate logic from both MCP servers
-  - [ ] Subtask: Update servers to use core services
-- [ ] Task: Extract shared artifact services to core
-  - [ ] Subtask: Write tests for artifact service module
+- [x] Task: Extract shared execution context to core
+  - [x] Subtask: Write failing tests for unified ExecutionContext interface
+  - [x] Subtask: Create `src/sandbox/core/execution_services.py`
+  - [x] Subtask: Move duplicate logic from both MCP servers
+  - [x] Subtask: Update servers to use core services
+- [~] Task: Extract shared artifact services to core
+  - [ ] Subtask: Write failing tests for artifact service module
   - [ ] Subtask: Create `src/sandbox/core/artifact_services.py`
   - [ ] Subtask: Move artifact capture logic from servers
   - [ ] Subtask: Update servers to use core artifact services
 - [ ] Task: Extract monkey-patching to core utilities
-  - [ ] Subtask: Write tests for patching utilities
+  - [ ] Subtask: Write failing tests for patching utilities
   - [ ] Subtask: Create `src/sandbox/core/patching.py`
   - [ ] Subtask: Move matplotlib/PIL patching from servers
 - [ ] Task: Fix SDK coupling to server implementation
-  - [ ] Subtask: Write tests for SDK independence from server
+  - [ ] Subtask: Write failing tests for SDK independence from server
   - [ ] Subtask: Remove ExecutionContext import from local_sandbox.py
   - [ ] Subtask: Use core services instead
 - [ ] Task: Maestro - Phase Verification and Checkpoint 'Core Services Extraction' (Protocol in workflow.md)
