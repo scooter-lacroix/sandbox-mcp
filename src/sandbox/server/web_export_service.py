@@ -1,8 +1,7 @@
 """
 Web Export Service for Sandbox MCP Server.
 
-This module handles web application export orchestration, persistence, and listing,
-replacing duplicate logic from the stdio server.
+This module handles web application export orchestration, persistence, and listing.
 
 This is the core orchestration layer. Template generation, Docker operations,
 and validation are split into separate modules for maintainability.
@@ -18,41 +17,39 @@ Security Features:
 from __future__ import annotations
 
 import logging
-import os
 import shutil
-import subprocess
 import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, List, TypedDict
+from typing import Any, Optional
 
-from sandbox.server.web_export_templates import (
-    get_flask_app_templates,
-    get_streamlit_app_templates
-)
-from sandbox.server.web_export_docker import (
-    build_docker_image as docker_build,
-    check_docker_available as docker_check_available,
-    remove_docker_image as docker_remove_image,
-    sanitize_docker_image_name
-)
-from sandbox.server.web_export_validation import (
+from .web_export_validators import (
+    ExportResult,
     check_disk_space,
     estimate_export_size,
-    MAX_EXPORT_SIZE_BYTES,
-    MIN_FREE_SPACE_BYTES,
-    MAX_EXPORT_NAME_LENGTH,
+    sanitize_docker_image_name,
     sanitize_export_name,
     validate_code,
-    ValidationError
+    MAX_EXPORT_SIZE_BYTES,
+    MIN_FREE_SPACE_BYTES,
+)
+from .web_export_templates import (
+    get_flask_app_templates,
+    get_streamlit_app_templates,
+)
+from .web_export_docker import (
+    DockerManager,
+    get_docker_manager,
 )
 
 logger = logging.getLogger(__name__)
 
 # Re-export constants for backward compatibility
 MAX_CODE_SIZE = 10 * 1024 * 1024  # 10 MB max code size
+MAX_EXPORT_NAME_LENGTH = 100
 DOCKER_BUILD_TIMEOUT = 1800  # 30 minutes
+DOCKER_IMAGE_NAME_MAX_LENGTH = 128
 
 __all__ = [
     'WebExportService',
@@ -64,31 +61,11 @@ __all__ = [
 ]
 
 
-class ExportResult(TypedDict, total=False):
-    """Type-safe export result dictionary."""
-    success: bool
-    export_name: str
-    export_dir: str
-    files_created: List[str]
-    docker_image: Optional[str]
-    error: Optional[str]
-    status: str
-    message: str
-    exports: List[Dict[str, Any]]
-    total_exports: int
-    export_info: Dict[str, Any]
-    docker_image_removed: bool
-    image_name: str
-    build_output: str
-    build_error: str
-
-
 class WebExportService:
     """
     Service for managing web application exports.
 
-    This service provides unified export, listing, and cleanup of web applications,
-    replacing duplicate logic in the stdio server.
+    This service provides unified export, listing, and cleanup of web applications.
 
     Security Features:
     - Path traversal prevention
@@ -108,20 +85,18 @@ class WebExportService:
         """
         self.artifacts_dir = artifacts_dir
         self._lock = threading.RLock()
-        self._docker_available: Optional[bool] = None
+        self._docker_manager = get_docker_manager()
 
     def _check_docker_available(self) -> bool:
         """
-        Check if Docker is available (cached result).
+        Check if Docker is available (wrapper for backward compatibility).
 
         Returns:
             True if Docker is available, False otherwise.
         """
-        if self._docker_available is None:
-            self._docker_available = docker_check_available()
-        return self._docker_available
+        return self._docker_manager.check_docker_available()
 
-    def _check_disk_space(self, directory: Path, required_bytes: int):
+    def _check_disk_space(self, directory: Path, required_bytes: int) -> tuple[bool, str]:
         """
         Check if sufficient disk space is available (wrapper for backward compatibility).
 
@@ -172,7 +147,7 @@ class WebExportService:
         code: str,
         export_name: Optional[str],
         app_type: str,
-        file_templates: Dict[str, Any]
+        file_templates: dict[str, Any]
     ) -> ExportResult:
         """
         Common export logic for all app types.
@@ -190,7 +165,7 @@ class WebExportService:
         try:
             validate_code(code)
             sanitized_export_name = sanitize_export_name(export_name) if export_name else None
-        except ValidationError as e:
+        except ValueError as e:
             return {
                 'success': False,
                 'error': str(e)
@@ -270,14 +245,12 @@ class WebExportService:
                 result['files_created'].append(str(file_path))
 
             # Try to build Docker image if available
-            if self._check_docker_available():
-                success, image_name, _, _ = docker_build(
-                    export_dir,
-                    result['export_name'],
-                    image_prefix='sandbox-'
-                )
-                if success and image_name:
-                    result['docker_image'] = image_name
+            docker_image = self._docker_manager.build_docker_image(
+                export_dir,
+                result['export_name']
+            )
+            if docker_image:
+                result['docker_image'] = docker_image
 
             result['success'] = True
 
@@ -358,7 +331,7 @@ class WebExportService:
         else:
             return self.export_streamlit_app(code, export_name)
 
-    def list_web_app_exports(self) -> Dict[str, Any]:
+    def list_web_app_exports(self) -> dict[str, Any]:
         """
         List all exported web applications.
 
@@ -409,7 +382,7 @@ class WebExportService:
             'message': f'Found {len(exports)} exported web applications'
         }
 
-    def _get_export_info(self, export_dir: Path) -> Optional[Dict[str, Any]]:
+    def _get_export_info(self, export_dir: Path) -> Optional[dict[str, Any]]:
         """
         Get information about a specific export directory.
 
@@ -450,7 +423,7 @@ class WebExportService:
             logger.error(f"Failed to get export info: {e}")
             return None
 
-    def get_export_details(self, export_name: str) -> Dict[str, Any]:
+    def get_export_details(self, export_name: str) -> dict[str, Any]:
         """
         Get detailed information about a specific web app export.
 
@@ -468,7 +441,7 @@ class WebExportService:
 
         try:
             sanitized_name = sanitize_export_name(export_name)
-        except ValidationError as e:
+        except ValueError as e:
             return {
                 'status': 'error',
                 'message': str(e)
@@ -534,7 +507,7 @@ class WebExportService:
                 'message': f'Failed to get export details: {str(e)}'
             }
 
-    def cleanup_web_app_export(self, export_name: str) -> Dict[str, Any]:
+    def cleanup_web_app_export(self, export_name: str) -> dict[str, Any]:
         """
         Remove an exported web application.
 
@@ -552,7 +525,7 @@ class WebExportService:
 
         try:
             sanitized_name = sanitize_export_name(export_name)
-        except ValidationError as e:
+        except ValueError as e:
             return {
                 'status': 'error',
                 'message': str(e)
@@ -579,10 +552,7 @@ class WebExportService:
             shutil.rmtree(export_dir)
 
             # Try to remove Docker image if it exists
-            docker_cleaned = False
-            if self._check_docker_available():
-                success, _ = docker_remove_image(sanitized_name, image_prefix='sandbox-')
-                docker_cleaned = success
+            docker_cleaned = self._docker_manager.remove_docker_image(sanitized_name)
 
             return {
                 'status': 'success',
@@ -597,7 +567,7 @@ class WebExportService:
                 'message': f'Failed to cleanup export: {str(e)}'
             }
 
-    def build_docker_image(self, export_name: str) -> Dict[str, Any]:
+    def build_docker_image(self, export_name: str) -> dict[str, Any]:
         """
         Build Docker image for an exported web application.
 
@@ -615,7 +585,7 @@ class WebExportService:
 
         try:
             sanitized_name = sanitize_export_name(export_name)
-        except ValidationError as e:
+        except ValueError as e:
             return {
                 'status': 'error',
                 'message': str(e)
@@ -644,31 +614,24 @@ class WebExportService:
                 'message': f'No Dockerfile found in export "{sanitized_name}"'
             }
 
-        if not self._check_docker_available():
+        if not self._docker_manager.check_docker_available():
             return {
                 'status': 'error',
                 'message': 'Docker not found. Please install Docker to build images.'
             }
 
-        success, image_name, stdout, stderr = docker_build(
-            export_dir,
-            sanitized_name,
-            image_prefix='sandbox-'
-        )
+        image_name = self._docker_manager.build_docker_image(export_dir, sanitized_name)
 
-        if success:
+        if image_name:
             return {
                 'status': 'success',
                 'image_name': image_name,
                 'export_name': sanitized_name,
-                'build_output': stdout,
                 'message': f'Docker image "{image_name}" built successfully'
             }
         else:
             return {
                 'status': 'error',
-                'build_output': stdout,
-                'build_error': stderr,
                 'message': f'Docker build failed for "{sanitized_name}"'
             }
 

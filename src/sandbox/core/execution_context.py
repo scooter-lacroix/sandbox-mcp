@@ -2,14 +2,13 @@
 Enhanced execution context with persistence and performance optimizations.
 
 Security:
-    This module uses pickle for serializing complex Python objects.
-    Pickle deserialization is protected with HMAC-SHA256 verification
-    to detect tampering. The HMAC key is generated on first initialization
-    and stored in the state database.
+    State persistence uses pickle for complex objects, protected by HMAC-SHA256
+    verification to detect tampering. HMAC and state management are handled by
+    the StateManager in execution_context_state.py.
 
 Database Transaction Management:
     All database operations use explicit transactions with BEGIN/COMMIT/ROLLBACK.
-    Connection pooling via a dedicated database manager ensures proper resource cleanup.
+    Connection pooling via DatabaseTransactionManager ensures proper resource cleanup.
     Failed operations are automatically rolled back to prevent partial state corruption.
 """
 
@@ -18,22 +17,14 @@ from __future__ import annotations
 import io
 import os
 import sys
-import json
 import uuid
 import time
-import pickle
-import tempfile
 import threading
-import hmac
-import hashlib
-import secrets
 from pathlib import Path
 from typing import Dict, Any, Optional, Set, List, ContextManager
 import logging
 from contextlib import contextmanager
 from collections import OrderedDict
-import sqlite3
-import base64
 
 
 logger = logging.getLogger(__name__)
@@ -223,8 +214,8 @@ class PersistentExecutionContext:
                 if table_exists:
                     migrate_hmac_column(cursor)
 
-                # Initialize HMAC key via StateManager
-                self._state_manager.initialize_hmac_key()
+                # Initialize HMAC key via StateManager (pass cursor to avoid nested transaction)
+                self._state_manager.initialize_hmac_key(cursor=cursor)
 
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
@@ -278,111 +269,42 @@ class PersistentExecutionContext:
         
         logger.info(f"Environment setup complete: {self.project_root}")
 
+    def _load_persistent_state(self):
+        """Load persistent execution state from database with HMAC verification."""
+        if self._state_manager is not None:
+            self._state_manager.load_persistent_state()
+        else:
+            logger.error("State manager not initialized")
+
+    def save_persistent_state(self):
+        """Save current execution state to database with HMAC protection."""
+        if self._state_manager is not None:
+            with self._lock:
+                self._state_manager.save_persistent_state()
+        else:
+            logger.error("State manager not initialized")
+
+    # Backward-compatible properties for accessing HMAC key via StateManager
+    @property
+    def _state_hmac_key(self) -> Optional[bytes]:
+        """Access the HMAC key from StateManager for backward compatibility."""
+        if self._state_manager is not None:
+            return self._state_manager._state_hmac_key
+        return None
+
+    # Backward-compatible wrappers for HMAC operations
     def _compute_state_hmac(self, data: bytes) -> str:
         """Compute HMAC-SHA256 for state data integrity verification."""
-        if self._state_hmac_key is None:
-            raise RuntimeError("HMAC key not initialized")
-        return hmac.new(
-            self._state_hmac_key,
-            data,
-            hashlib.sha256
-        ).hexdigest()
+        if self._state_manager is not None:
+            return self._state_manager.compute_state_hmac(data)
+        raise RuntimeError("State manager not initialized")
 
     def _verify_state_hmac(self, data: bytes, stored_hmac: str) -> bool:
         """Verify HMAC for state data. Returns True if valid, False if tampered."""
-        if self._state_hmac_key is None:
-            raise RuntimeError("HMAC key not initialized")
-        computed_hmac = self._compute_state_hmac(data)
-        return hmac.compare_digest(computed_hmac, stored_hmac)
+        if self._state_manager is not None:
+            return self._state_manager.verify_state_hmac(data, stored_hmac)
+        raise RuntimeError("State manager not initialized")
 
-    def _load_persistent_state(self):
-        """Load persistent execution state from database with HMAC verification and proper transaction management."""
-        if self._db_manager is None:
-            logger.error("Database manager not initialized")
-            return
-            
-        try:
-            with self._db_manager.transaction() as cursor:
-                cursor.execute(
-                    'SELECT key, value, type, hmac FROM execution_state ORDER BY timestamp DESC'
-                )
-                rows = cursor.fetchall()
-
-                for key, value_str, type_str, stored_hmac in rows:
-                    try:
-                        # Decode the value
-                        if type_str == 'pickle':
-                            data = base64.b64decode(value_str)
-                        else:
-                            data = value_str.encode('utf-8')
-                        
-                        # Verify HMAC before deserializing
-                        if not self._verify_state_hmac(data, stored_hmac):
-                            logger.error(f"State integrity check failed for {key} - possible tampering")
-                            continue
-                        
-                        # Safe to deserialize after HMAC verification
-                        if type_str == 'pickle':
-                            value = pickle.loads(data)
-                        else:
-                            value = json.loads(value_str)
-
-                        self.globals_dict[key] = value
-                    except Exception as e:
-                        logger.warning(f"Failed to load state for {key}: {e}")
-
-        except Exception as e:
-            logger.warning(f"Failed to load persistent state: {e}")
-
-    def save_persistent_state(self):
-        """Save current execution state to database with HMAC protection and proper transaction management."""
-        if self._db_manager is None:
-            logger.error("Database manager not initialized")
-            return
-            
-        with self._lock:
-            try:
-                # Prepare all operations for atomic execution
-                operations = []
-                
-                # First operation: clear existing state
-                operations.append(('DELETE FROM execution_state', ()))
-                
-                # Prepare INSERT operations for each state item
-                for key, value in self.globals_dict.items():
-                    if key.startswith('_'):  # Skip internal variables
-                        continue
-
-                    try:
-                        # Try JSON serialization first
-                        value_str = json.dumps(value)
-                        type_str = 'json'
-                        data_for_hmac = value_str.encode('utf-8')
-                    except (TypeError, ValueError):
-                        # Fall back to pickle for complex objects
-                        try:
-                            pickled = pickle.dumps(value)
-                            value_str = base64.b64encode(pickled).decode()
-                            type_str = 'pickle'
-                            data_for_hmac = pickled
-                        except Exception:
-                            continue  # Skip non-serializable objects
-
-                    # Compute HMAC for integrity verification
-                    state_hmac = self._compute_state_hmac(data_for_hmac)
-                    
-                    operations.append((
-                        'INSERT OR REPLACE INTO execution_state (key, value, type, hmac, timestamp) VALUES (?, ?, ?, ?, ?)',
-                        (key, value_str, type_str, state_hmac, time.time())
-                    ))
-                
-                # Execute all operations atomically
-                self._db_manager.execute_in_transaction(operations)
-                
-            except Exception as e:
-                logger.error(f"Failed to save persistent state: {e}")
-                # Transaction manager handles rollback automatically
-    
     @contextmanager
     def capture_output(self):
         """Context manager for capturing stdout/stderr with performance tracking."""
@@ -577,25 +499,19 @@ class PersistentExecutionContext:
         """Generate comprehensive artifact report."""
         return get_artifact_report(self.artifacts_dir)
     
-    def _store_execution_history(self, code: str, success: bool, error: Optional[str], 
+    def _store_execution_history(self, code: str, success: bool, error: Optional[str],
                                 execution_time: float, artifacts: List[str]):
         """Store execution in history database."""
-        try:
-            with sqlite3.connect(self.state_file) as conn:
-                conn.execute('''
-                    INSERT INTO execution_history 
-                    (code, result, execution_time, memory_usage, artifacts, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (
-                    code,
-                    json.dumps({'success': success, 'error': error}),
-                    execution_time,
-                    0,  # Memory usage tracking can be added later
-                    json.dumps(artifacts),
-                    time.time()
-                ))
-        except Exception as e:
-            logger.error(f"Failed to store execution history: {e}")
+        if self._state_manager is not None:
+            self._state_manager.store_execution_history(
+                code=code,
+                success=success,
+                error=error,
+                execution_time=execution_time,
+                artifacts=artifacts
+            )
+        else:
+            logger.error("State manager not initialized")
     
     def get_execution_stats(self) -> Dict[str, Any]:
         """Get performance statistics."""
@@ -612,35 +528,10 @@ class PersistentExecutionContext:
     
     def get_execution_history(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Get execution history."""
-        try:
-            with sqlite3.connect(self.state_file) as conn:
-                cursor = conn.execute('''
-                    SELECT code, result, execution_time, artifacts, timestamp
-                    FROM execution_history
-                    ORDER BY timestamp DESC
-                    LIMIT ?
-                ''', (limit,))
-                
-                history = []
-                for row in cursor:
-                    code, result_str, exec_time, artifacts_str, timestamp = row
-                    try:
-                        result = json.loads(result_str)
-                        artifacts = json.loads(artifacts_str) if artifacts_str else []
-                    except:
-                        continue
-                    
-                    history.append({
-                        'code': code,
-                        'result': result,
-                        'execution_time': exec_time,
-                        'artifacts': artifacts,
-                        'timestamp': timestamp
-                    })
-                
-                return history
-        except Exception as e:
-            logger.error(f"Failed to get execution history: {e}")
+        if self._state_manager is not None:
+            return self._state_manager.get_execution_history(limit=limit)
+        else:
+            logger.error("State manager not initialized")
             return []
     
     def clear_cache(self):

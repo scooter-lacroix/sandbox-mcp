@@ -18,6 +18,7 @@ Database Transaction Management:
 
 from __future__ import annotations
 
+import sys
 import json
 import pickle
 import time
@@ -62,7 +63,7 @@ class StateManager:
         self._globals_dict = globals_dict
         self._state_hmac_key: Optional[bytes] = None
 
-    def initialize_hmac_key(self):
+    def initialize_hmac_key(self, cursor: Optional[sqlite3.Cursor] = None):
         """
         Initialize or load the HMAC key from the database metadata.
 
@@ -70,38 +71,56 @@ class StateManager:
         is available for state signing/verification operations.
 
         The key is stored in the _metadata table and generated once per session.
+
+        Args:
+            cursor: Optional cursor to use for operations. If not provided,
+                   a new transaction will be created. This allows the method
+                   to be called within an existing transaction context.
         """
+        should_close = False
+        if cursor is None:
+            # Create a new transaction if no cursor was provided
+            context_manager = self._db_manager.transaction()
+            cursor = context_manager.__enter__()
+            should_close = True
+        else:
+            context_manager = None
+
         try:
-            with self._db_manager.transaction() as cursor:
-                # Store/retrieve HMAC key in metadata table
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS _metadata (
-                        key TEXT PRIMARY KEY,
-                        value TEXT NOT NULL
-                    )
-                ''')
-
-                # Get or generate HMAC key
-                cursor.execute(
-                    "SELECT value FROM _metadata WHERE key = 'hmac_key'"
+            # Store/retrieve HMAC key in metadata table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS _metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
                 )
-                row = cursor.fetchone()
+            ''')
 
-                if row is not None:
-                    # Load existing key
-                    self._state_hmac_key = base64.b64decode(row[0])
-                    logger.debug("Loaded existing HMAC key from database")
-                else:
-                    # Generate new key
-                    self._state_hmac_key = secrets.token_bytes(32)
-                    cursor.execute(
-                        "INSERT INTO _metadata (key, value) VALUES (?, ?)",
-                        ('hmac_key', base64.b64encode(self._state_hmac_key).decode())
-                    )
-                    logger.debug("Generated new HMAC key for state integrity")
+            # Get or generate HMAC key
+            cursor.execute(
+                "SELECT value FROM _metadata WHERE key = 'hmac_key'"
+            )
+            row = cursor.fetchone()
+
+            if row is not None:
+                # Load existing key
+                self._state_hmac_key = base64.b64decode(row[0])
+                logger.debug("Loaded existing HMAC key from database")
+            else:
+                # Generate new key
+                self._state_hmac_key = secrets.token_bytes(32)
+                cursor.execute(
+                    "INSERT INTO _metadata (key, value) VALUES (?, ?)",
+                    ('hmac_key', base64.b64encode(self._state_hmac_key).decode())
+                )
+                logger.debug("Generated new HMAC key for state integrity")
         except Exception as e:
             logger.error(f"Failed to initialize HMAC key: {e}")
+            if should_close and context_manager is not None:
+                context_manager.__exit__(*sys.exc_info())
             raise
+        finally:
+            if should_close and context_manager is not None:
+                context_manager.__exit__(None, None, None)
 
     def compute_state_hmac(self, data: bytes) -> str:
         """
