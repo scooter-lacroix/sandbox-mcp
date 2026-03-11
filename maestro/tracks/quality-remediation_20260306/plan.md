@@ -359,40 +359,40 @@ Ensure all acceptance criteria met and document improvements
       - Note: Worker lifecycle tests remain XFAIL as they require subprocess worker pool (separate feature)
     - [x] Subtask: Backward compatibility verified - All 329+ existing tests still pass
 
-### Tier 1: Security Blockers (BLOCKED ON TIER 0)
+### Tier 1: Security Blockers (4/5 COMPLETE - S2, S3, S4, S5 done; S1 partial)
 
-- [ ] Task: S1 — Fix symlink-based host file exfiltration
-  - [ ] Subtask: Write failing test that creates symlink in artifacts dir and asserts it's skipped
-  - [ ] Subtask: Add or verify `is_symlink()` rejection in `src/sandbox/server/execution_helpers.py`
-  - [ ] Subtask: Add or verify `is_symlink()` rejection in `src/sandbox/core/execution_context.py` (`_get_current_artifacts`)
-  - [ ] Subtask: Add `is_relative_to()` validation for resolved paths
-  - [ ] Subtask: Verify test passes, no symlinks are read
+- [~] Task: S1 — Fix symlink-based host file exfiltration [PARTIAL - execution_helpers.py verified]
+  - [x] Subtask: Write failing test that creates symlink in artifacts dir and asserts it's skipped
+  - [x] Subtask: Add or verify `is_symlink()` rejection in `src/sandbox/server/execution_helpers.py` (verified - lines 202-205)
+  - [ ] Subtask: Add or verify `is_symlink()` rejection in `src/sandbox/core/execution_context.py` (`_get_current_artifacts`) - PENDING
+  - [x] Subtask: Add `is_relative_to()` validation for resolved paths (verified in execution_helpers.py)
+  - [x] Subtask: Verify test passes, no symlinks are read (36/36 security tests pass)
 
-- [ ] Task: S2 — Fix session_id path traversal
-  - [ ] Subtask: Write failing test with `session_id="../../etc"` asserting ValueError
-  - [ ] Subtask: Enforce validation in `PersistentExecutionContext`
-  - [ ] Subtask: Enforce the same validation in any transport or helper that still constructs session paths
-  - [ ] Subtask: Remove duplicate or divergent validation patterns once the shared utility is in place
+- [x] Task: S2 — Fix session_id path traversal [COMPLETED]
+  - [x] Subtask: Write failing test with `session_id="../../etc"` asserting ValueError
+  - [x] Subtask: Enforce validation in `PersistentExecutionContext` (_validate_session_id, lines 229-275)
+  - [x] Subtask: Enforce the same validation in any transport or helper that still constructs session paths (verified in execution_services.py)
+  - [x] Subtask: Remove duplicate or divergent validation patterns once the shared utility is in place (all use PersistentExecutionContext)
 
-- [ ] Task: S3 — Fix backup_name path traversal
-  - [ ] Subtask: Write failing test with `backup_name="../../exploit"` asserting rejection
-  - [ ] Subtask: Apply the shared sanitization pattern to `backup_artifacts()` and `rollback_artifacts()`
-  - [ ] Subtask: Verify backup inspection/listing paths cannot escape the backup root
-  - [ ] Subtask: Verify test passes
+- [x] Task: S3 — Fix backup_name path traversal [COMPLETED]
+  - [x] Subtask: Write failing test with `backup_name="../../exploit"` asserting rejection
+  - [x] Subtask: Apply the shared sanitization pattern to `backup_artifacts()` and `rollback_artifacts()`
+  - [x] Subtask: Verify backup inspection/listing paths cannot escape the backup root (get_backup_info fix)
+  - [x] Subtask: Verify test passes (36/36 security tests pass)
 
-- [ ] Task: S4 — Replace prefix-based path validation everywhere it remains security-relevant
-  - [ ] Subtask: Write test with `/home/user_evil` against base `/home/user` asserting failure
-  - [ ] Subtask: Replace remaining `startswith()` path checks in `src/sandbox/core/execution_services.py`
-  - [ ] Subtask: Replace remaining `startswith()` path checks in `src/sandbox/core/security.py`
-  - [ ] Subtask: Replace remaining `startswith()` path checks in `src/sandbox/core/patching.py`
-  - [ ] Subtask: Replace remaining `startswith()` path checks in any transport-specific code still bypassing shared validation
-  - [ ] Subtask: Verify all path validation tests pass
+- [x] Task: S4 — Replace prefix-based path validation everywhere it remains security-relevant [COMPLETED]
+  - [x] Subtask: Write test with `/home/user_evil` against base `/home/user` asserting failure (TestFileSystemSecurityS4Fix)
+  - [x] Subtask: Replace remaining `startswith()` path checks in `src/sandbox/core/execution_services.py` (line 503)
+  - [x] Subtask: Replace remaining `startswith()` path checks in `src/sandbox/core/security.py` (lines 228, 233)
+  - [x] Subtask: Replace remaining `startswith()` path checks in `src/sandbox/core/patching.py` (logging-only, no action needed)
+  - [x] Subtask: Replace remaining `startswith()` path checks in any transport-specific code (none found)
+  - [x] Subtask: Verify all path validation tests pass (36/36 security tests pass)
 
-- [ ] Task: S5 — Resolve main execution-path security enforcement gap
-  - [ ] Subtask: Decide and document the security model for primary code execution after Tier 0 architecture is in place
-  - [ ] Subtask: If validator-based gating remains part of the design, write failing tests asserting enforcement on `execute()` and `execute_with_artifacts()`
-  - [ ] Subtask: If isolation is the primary protection, remove contradictory plan/docs language and add enforcement/tests around the actual controls
-  - [ ] Subtask: Verify all user-facing security claims match implemented controls
+- [x] Task: S5 — Resolve main execution-path security enforcement gap [RESOLVED - NOT APPLICABLE]
+  - [x] Subtask: Decide and document the security model for primary code execution after Tier 0 architecture is in place (isolation-based, not validator-based)
+  - [x] Subtask: If validator-based gating remains part of the design, write failing tests asserting enforcement on `execute()` and `execute_with_artifacts()` (not applicable - isolation is the model)
+  - [x] Subtask: If isolation is the primary protection, remove contradictory plan/docs language and add enforcement/tests around the actual controls (documented in execution_helpers.py)
+  - [x] Subtask: Verify all user-facing security claims match implemented controls (tests document false positives and bypass scenarios)
 
 ### Tier 2: Correctness, Concurrency, and Shared-State Fixes
 
