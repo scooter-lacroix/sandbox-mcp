@@ -39,135 +39,35 @@ import base64
 logger = logging.getLogger(__name__)
 
 
-class DatabaseTransactionManager:
-    """
-    Manages SQLite database connections and transactions with proper resource cleanup.
-    
-    Features:
-    - Explicit transaction management (BEGIN/COMMIT/ROLLBACK)
-    - Connection pooling with thread-local storage
-    - Automatic rollback on exceptions
-    - Proper resource cleanup in finally blocks
-    """
-    
-    def __init__(self, db_path: Path, timeout: float = 30.0) -> None:
-        """
-        Initialize database transaction manager.
-        
-        Args:
-            db_path: Path to SQLite database file
-            timeout: Connection timeout in seconds
-        """
-        self.db_path = db_path
-        self.timeout = timeout
-        self._local = threading.local()
-        self._lock = threading.Lock()
-        
-    def _get_connection(self) -> sqlite3.Connection:
-        """Get thread-local database connection."""
-        if not hasattr(self._local, 'conn') or self._local.conn is None:
-            self._local.conn = sqlite3.connect(
-                str(self.db_path),
-                timeout=self.timeout,
-                isolation_level=None  # Autocommit mode, we manage transactions manually
-            )
-            self._local.conn.execute('PRAGMA journal_mode=WAL')
-            self._local.conn.execute('PRAGMA synchronous=NORMAL')
-        return self._local.conn
-    
-    def _close_connection(self) -> None:
-        """Close thread-local database connection."""
-        if hasattr(self._local, 'conn') and self._local.conn is not None:
-            try:
-                self._local.conn.close()
-            except Exception as e:
-                logger.warning(f"Error closing database connection: {e}")
-            self._local.conn = None
-    
-    @contextmanager
-    def transaction(self) -> ContextManager[sqlite3.Cursor]:
-        """
-        Context manager for database transactions with automatic rollback on failure.
-        
-        Usage:
-            with db_manager.transaction() as cursor:
-                cursor.execute('INSERT INTO ...')
-                cursor.execute('UPDATE ...')
-            # Commits automatically on success
-            # Rolls back automatically on exception
-        
-        Yields:
-            sqlite3.Cursor for executing queries within the transaction
-        """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            # Begin explicit transaction
-            cursor.execute('BEGIN IMMEDIATE')
-            yield cursor
-            # Commit on success
-            cursor.execute('COMMIT')
-        except Exception as e:
-            # Rollback on any exception
-            try:
-                cursor.execute('ROLLBACK')
-            except Exception as rollback_error:
-                logger.error(f"Rollback failed: {rollback_error}")
-            logger.error(f"Transaction failed, rolled back: {e}")
-            raise
-        finally:
-            # Always clean up cursor
-            cursor.close()
-    
-    def execute_in_transaction(
-        self,
-        operations: List[tuple[str, tuple[Any, ...]]]
-    ) -> List[Any]:
-        """
-        Execute multiple operations in a single transaction.
-        
-        Args:
-            operations: List of (sql, params) tuples to execute atomically
-            
-        Returns:
-            List of results from each operation
-            
-        Raises:
-            sqlite3.Error: If any operation fails, entire transaction is rolled back
-        """
-        results = []
-        
-        with self.transaction() as cursor:
-            for sql, params in operations:
-                cursor.execute(sql, params)
-                results.append(cursor.fetchall() if cursor.description else cursor.rowcount)
-        
-        return results
-    
-    def close_all(self) -> None:
-        """Close all database connections (for cleanup)."""
-        self._close_connection()
+# Import DatabaseTransactionManager from dedicated module
+from .execution_context_db import DatabaseTransactionManager
 
-class DirectoryChangeMonitor:
-    def __init__(self, default_working_dir: Path, home_dir: Path):
-        self.current_dir = default_working_dir
-        self.default_dir = default_working_dir
-        self.home_dir = home_dir
+# Import DirectoryChangeMonitor from dedicated module
+from .execution_context_monitor import DirectoryChangeMonitor
 
-    def change_directory(self, new_dir: Path):
-        if new_dir.resolve() != self.default_dir.resolve() and not new_dir.resolve().is_relative_to(self.home_dir):
-            logger.warning(f"Unauthorized attempt to change directory: {new_dir}")
-            raise PermissionError(f"Cannot change to directory outside home: {new_dir}")
-        logger.info(f"Changing directory from {self.current_dir} to {new_dir}")
-        self.current_dir = new_dir
+# Import artifact management functions from dedicated module
+from .execution_context_artifacts import (
+    get_current_artifacts,
+    categorize_artifacts,
+    get_artifact_report
+)
 
-    def reset_to_default(self):
-        logger.info(f"Resetting to default directory: {self.default_dir}")
-        self.current_dir = self.default_dir
+# Import file operation functions from dedicated module
+from .execution_context_files import (
+    save_error_details,
+    change_working_directory as change_working_directory_fn,
+    list_directory as list_directory_fn,
+    find_files as find_files_fn,
+    reset_to_default_directory as reset_to_default_directory_fn,
+    get_current_directory_info as get_current_directory_info_fn
+)
 
-
-
+# Import state management functions and classes from dedicated module
+from .execution_context_state import (
+    StateManager,
+    create_state_tables,
+    migrate_hmac_column
+)
 
 class PersistentExecutionContext:
     """
@@ -211,11 +111,10 @@ class PersistentExecutionContext:
         self.compilation_cache = {}
         self._lock = threading.RLock()
 
-        # HMAC key for state integrity verification
-        self._state_hmac_key: Optional[bytes] = None
-
         # Database transaction manager
         self._db_manager: Optional[DatabaseTransactionManager] = None
+        # State manager for persistence operations
+        self._state_manager: Optional[StateManager] = None
 
         # Initialize directories and database
         self._setup_directories()
@@ -301,7 +200,14 @@ class PersistentExecutionContext:
         """Initialize SQLite database for state persistence with HMAC support and transaction management."""
         # Initialize database transaction manager
         self._db_manager = DatabaseTransactionManager(self.state_file)
-        
+
+        # Initialize state manager with globals_dict reference
+        self._state_manager = StateManager(
+            state_file=self.state_file,
+            db_manager=self._db_manager,
+            globals_dict=self.globals_dict
+        )
+
         try:
             with self._db_manager.transaction() as cursor:
                 # Check if we need to migrate the schema
@@ -310,73 +216,16 @@ class PersistentExecutionContext:
                 )
                 table_exists = cursor.fetchone() is not None
 
-                # Create execution_state table with HMAC column
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS execution_state (
-                        key TEXT PRIMARY KEY,
-                        value TEXT NOT NULL,
-                        type TEXT NOT NULL,
-                        hmac TEXT NOT NULL,
-                        timestamp REAL NOT NULL
-                    )
-                ''')
+                # Create state management tables using helper function
+                create_state_tables(cursor)
 
-                # Migrate existing rows without HMAC (set HMAC to empty, will be regenerated on next save)
+                # Migrate existing tables if needed
                 if table_exists:
-                    try:
-                        cursor.execute('ALTER TABLE execution_state ADD COLUMN hmac TEXT NOT NULL DEFAULT ""')
-                    except sqlite3.OperationalError:
-                        # Column already exists
-                        pass
+                    migrate_hmac_column(cursor)
 
-                # Store/retrieve HMAC key in metadata table
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS _metadata (
-                        key TEXT PRIMARY KEY,
-                        value TEXT NOT NULL
-                    )
-                ''')
+                # Initialize HMAC key via StateManager
+                self._state_manager.initialize_hmac_key()
 
-                # Get or generate HMAC key
-                cursor.execute(
-                    "SELECT value FROM _metadata WHERE key = 'hmac_key'"
-                )
-                row = cursor.fetchone()
-
-                if row is not None:
-                    # Load existing key
-                    self._state_hmac_key = base64.b64decode(row[0])
-                else:
-                    # Generate new key
-                    self._state_hmac_key = secrets.token_bytes(32)
-                    cursor.execute(
-                        "INSERT INTO _metadata (key, value) VALUES (?, ?)",
-                        ('hmac_key', base64.b64encode(self._state_hmac_key).decode())
-                    )
-
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS execution_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        code TEXT,
-                        result TEXT,
-                        execution_time REAL,
-                        memory_usage INTEGER,
-                        artifacts TEXT,
-                        timestamp REAL
-                    )
-                ''')
-
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS artifacts (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        name TEXT,
-                        path TEXT,
-                        type TEXT,
-                        size INTEGER,
-                        metadata TEXT,
-                        timestamp REAL
-                    )
-                ''')
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
             raise
@@ -715,159 +564,18 @@ class PersistentExecutionContext:
     
     def _get_current_artifacts(self) -> Set[str]:
         """Get current set of artifact files.
-        
+
         Security: Symlinks are skipped to prevent host file exfiltration attacks.
         """
-        artifacts = set()
-        if self.artifacts_dir.exists():
-            artifacts_root = self.artifacts_dir.resolve()
-            for file_path in artifacts_root.rglob('*'):
-                # SECURITY S1: Skip symlinks to prevent host file exfiltration
-                if file_path.is_symlink():
-                    continue
-                if not file_path.is_file():
-                    continue
-                    
-                # SECURITY S1: Verify resolved path is still within artifacts_root
-                try:
-                    resolved_path = file_path.resolve()
-                    if not resolved_path.is_relative_to(artifacts_root):
-                        continue
-                except (ValueError, OSError):
-                    continue
-                    
-                artifacts.add(str(file_path.relative_to(artifacts_root)))
-        return artifacts
+        return get_current_artifacts(self.artifacts_dir)
     
     def categorize_artifacts(self) -> Dict[str, List[Dict[str, Any]]]:
         """Categorize artifacts by type with detailed metadata."""
-        categories = {
-            'images': [],
-            'videos': [],
-            'plots': [],
-            'data': [],
-            'code': [],
-            'documents': [],
-            'audio': [],
-            'manim': [],
-            'other': []
-        }
-        
-        if not self.artifacts_dir.exists():
-            return categories
-        
-        # File type mappings
-        type_mappings = {
-            'images': {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.svg', '.webp'},
-            'videos': {'.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv'},
-            'plots': {'.png', '.jpg', '.jpeg', '.pdf', '.svg'},  # When in plots directory
-            'data': {'.csv', '.json', '.xml', '.yaml', '.yml', '.pkl', '.pickle', '.h5', '.hdf5'},
-            'code': {'.py', '.js', '.html', '.css', '.sql', '.sh', '.bat'},
-            'documents': {'.pdf', '.docx', '.doc', '.txt', '.md', '.rtf'},
-            'audio': {'.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a'},
-            'manim': {'.mp4', '.png', '.gif'}  # When in manim-related directories
-        }
-        
-        for file_path in self.artifacts_dir.rglob('*'):
-            if not file_path.is_file():
-                continue
-                
-            relative_path = file_path.relative_to(self.artifacts_dir)
-            suffix = file_path.suffix.lower()
-            
-            # Get file info
-            try:
-                stat = file_path.stat()
-                file_info = {
-                    'path': str(relative_path),
-                    'full_path': str(file_path),
-                    'size': stat.st_size,
-                    'created': stat.st_ctime,
-                    'modified': stat.st_mtime,
-                    'extension': suffix,
-                    'name': file_path.name
-                }
-            except Exception as e:
-                logger.warning(f"Failed to get file info for {file_path}: {e}")
-                continue
-            
-            # Categorize based on location and extension
-            categorized = False
-            
-            # Check if it's in a specific subdirectory
-            parts = relative_path.parts
-            if len(parts) > 1:
-                subdir = parts[0]
-                if subdir in categories:
-                    categories[subdir].append(file_info)
-                    categorized = True
-            
-            # Enhanced Manim detection - check for various Manim output patterns
-            if not categorized:
-                path_str = str(relative_path).lower()
-                if any(pattern in path_str for pattern in [
-                    'manim', 'scene', 'media', 'videos', 'images', 'tex', 'text'
-                ]) and any(pattern in path_str for pattern in [
-                    'manim_', 'scene_', 'media/', 'videos/', 'images/'
-                ]):
-                    categories['manim'].append(file_info)
-                    categorized = True
-            
-            # If not categorized by directory, use extension
-            if not categorized:
-                for category, extensions in type_mappings.items():
-                    if suffix in extensions:
-                        # Additional Manim detection by content and path patterns
-                        if category in ['videos', 'images'] and any(pattern in str(relative_path).lower() for pattern in [
-                            'manim', 'scene', 'media/', 'videos/', 'images/', 'tex/', 'text/'
-                        ]):
-                            categories['manim'].append(file_info)
-                        else:
-                            categories[category].append(file_info)
-                        categorized = True
-                        break
-            
-            # If still not categorized, put in 'other'
-            if not categorized:
-                categories['other'].append(file_info)
-        
-        return categories
+        return categorize_artifacts(self.artifacts_dir)
     
     def get_artifact_report(self) -> Dict[str, Any]:
         """Generate comprehensive artifact report."""
-        categorized = self.categorize_artifacts()
-        
-        report = {
-            'total_artifacts': sum(len(files) for files in categorized.values()),
-            'categories': {},
-            'recent_artifacts': [],
-            'largest_artifacts': [],
-            'total_size': 0
-        }
-        
-        all_artifacts = []
-        
-        for category, files in categorized.items():
-            if files:
-                category_size = sum(f['size'] for f in files)
-                report['categories'][category] = {
-                    'count': len(files),
-                    'size': category_size,
-                    'files': files
-                }
-                report['total_size'] += category_size
-                all_artifacts.extend(files)
-        
-        # Sort by modification time for recent artifacts
-        if all_artifacts:
-            all_artifacts.sort(key=lambda x: x['modified'], reverse=True)
-            report['recent_artifacts'] = all_artifacts[:10]
-            
-            # Sort by size for largest artifacts
-            all_artifacts.sort(key=lambda x: x['size'], reverse=True)
-            report['largest_artifacts'] = all_artifacts[:10]
-        
-        return report
+        return get_artifact_report(self.artifacts_dir)
     
     def _store_execution_history(self, code: str, success: bool, error: Optional[str], 
                                 execution_time: float, artifacts: List[str]):
@@ -951,260 +659,89 @@ class PersistentExecutionContext:
     
     def _save_error_details(self, error: Exception, code: str, traceback_str: str):
         """Save detailed error information for debugging."""
-        try:
-            error_dir = self.artifacts_dir / "logs"
-            error_dir.mkdir(exist_ok=True)
-            
-            error_file = error_dir / f"error_{int(time.time())}.log"
-            with open(error_file, 'w') as f:
-                f.write(f"Error occurred at: {time.ctime()}\n")
-                f.write(f"Error type: {type(error).__name__}\n")
-                f.write(f"Error message: {str(error)}\n")
-                f.write(f"Session ID: {self.session_id}\n")
-                f.write("\n" + "="*50 + "\n")
-                f.write("Code that caused the error:\n")
-                f.write("="*50 + "\n")
-                f.write(code)
-                f.write("\n" + "="*50 + "\n")
-                f.write("Full traceback:\n")
-                f.write("="*50 + "\n")
-                f.write(traceback_str)
-                
-            logger.info(f"Error details saved to: {error_file}")
-        except Exception as e:
-            logger.error(f"Failed to save error details: {e}")
+        save_error_details(
+            artifacts_dir=self.artifacts_dir,
+            error=error,
+            code=code,
+            traceback_str=traceback_str,
+            session_id=self.session_id
+        )
     
     def change_working_directory(self, path: str, temporary: bool = False) -> Dict[str, Any]:
         """
         Change the working directory with security checks and logging.
-        
+
         Args:
             path: The new directory path
             temporary: Whether this is a temporary change (returns to default after operation)
-            
+
         Returns:
             Dictionary containing operation result and current directory info
         """
-        try:
-            new_path = Path(path).resolve()
-            
-            # Security check through directory monitor
-            self.directory_monitor.change_directory(new_path)
-            
-            # Change actual working directory
-            original_cwd = os.getcwd()
-            os.chdir(new_path)
-            
-            logger.info(f"Changed working directory to: {new_path}")
-            
-            return {
-                'success': True,
-                'current_directory': str(new_path),
-                'previous_directory': original_cwd,
-                'is_default': new_path == self.directory_monitor.default_dir,
-                'is_temporary': temporary
-            }
-            
-        except PermissionError as e:
-            logger.error(f"Permission denied changing directory: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'current_directory': os.getcwd()
-            }
-        except Exception as e:
-            logger.error(f"Error changing directory: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'current_directory': os.getcwd()
-            }
+        return change_working_directory_fn(
+            path=path,
+            temporary=temporary,
+            directory_monitor=self.directory_monitor,
+            home_dir=self.home_dir
+        )
     
     def list_directory(self, path: Optional[str] = None, include_hidden: bool = False) -> Dict[str, Any]:
         """
         List contents of a directory with security checks.
-        
+
         Args:
             path: Directory to list (defaults to current directory)
             include_hidden: Whether to include hidden files
-            
+
         Returns:
             Dictionary containing directory contents and metadata
         """
-        try:
-            target_path = Path(path) if path else Path.cwd()
-            target_path = target_path.resolve()
-            
-            # Security check
-            if not target_path.is_relative_to(self.home_dir):
-                raise PermissionError(f"Cannot access directory outside home: {target_path}")
-            
-            if not target_path.exists():
-                return {
-                    'success': False,
-                    'error': f"Directory does not exist: {target_path}",
-                    'path': str(target_path)
-                }
-            
-            items = []
-            for item in target_path.iterdir():
-                if not include_hidden and item.name.startswith('.'):
-                    continue
-                    
-                try:
-                    stat = item.stat()
-                    items.append({
-                        'name': item.name,
-                        'type': 'directory' if item.is_dir() else 'file',
-                        'size': stat.st_size if item.is_file() else None,
-                        'modified': stat.st_mtime,
-                        'permissions': oct(stat.st_mode)[-3:]
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to get info for {item}: {e}")
-            
-            logger.info(f"Listed directory: {target_path} ({len(items)} items)")
-            
-            return {
-                'success': True,
-                'path': str(target_path),
-                'items': sorted(items, key=lambda x: (x['type'], x['name'])),
-                'total_items': len(items)
-            }
-            
-        except PermissionError as e:
-            logger.error(f"Permission denied listing directory: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'path': str(target_path) if 'target_path' in locals() else path
-            }
-        except Exception as e:
-            logger.error(f"Error listing directory: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'path': str(target_path) if 'target_path' in locals() else path
-            }
+        return list_directory_fn(
+            path=path,
+            include_hidden=include_hidden,
+            home_dir=self.home_dir
+        )
     
     def find_files(self, pattern: str, search_path: Optional[str] = None, max_results: int = 100) -> Dict[str, Any]:
         """
         Find files matching a pattern with security checks.
-        
+
         Args:
             pattern: Glob pattern to search for
             search_path: Directory to search in (defaults to current directory)
             max_results: Maximum number of results to return
-            
+
         Returns:
             Dictionary containing search results
         """
-        try:
-            base_path = Path(search_path) if search_path else Path.cwd()
-            base_path = base_path.resolve()
-            
-            # Security check
-            if not base_path.is_relative_to(self.home_dir):
-                raise PermissionError(f"Cannot search directory outside home: {base_path}")
-            
-            matches = []
-            for file_path in base_path.glob(pattern):
-                if len(matches) >= max_results:
-                    break
-                    
-                try:
-                    stat = file_path.stat()
-                    matches.append({
-                        'path': str(file_path),
-                        'relative_path': str(file_path.relative_to(base_path)),
-                        'name': file_path.name,
-                        'type': 'directory' if file_path.is_dir() else 'file',
-                        'size': stat.st_size if file_path.is_file() else None,
-                        'modified': stat.st_mtime
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to get info for {file_path}: {e}")
-            
-            logger.info(f"Found {len(matches)} files matching pattern '{pattern}' in {base_path}")
-            
-            return {
-                'success': True,
-                'pattern': pattern,
-                'search_path': str(base_path),
-                'matches': matches,
-                'total_matches': len(matches),
-                'truncated': len(matches) >= max_results
-            }
-            
-        except PermissionError as e:
-            logger.error(f"Permission denied searching files: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'pattern': pattern,
-                'search_path': str(base_path) if 'base_path' in locals() else search_path
-            }
-        except Exception as e:
-            logger.error(f"Error searching files: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'pattern': pattern,
-                'search_path': str(base_path) if 'base_path' in locals() else search_path
-            }
+        return find_files_fn(
+            pattern=pattern,
+            search_path=search_path,
+            max_results=max_results,
+            home_dir=self.home_dir
+        )
     
     def reset_to_default_directory(self) -> Dict[str, Any]:
         """
         Reset working directory to the default sandbox area.
-        
+
         Returns:
             Dictionary containing operation result
         """
-        try:
-            self.directory_monitor.reset_to_default()
-            os.chdir(self.directory_monitor.default_dir)
-            
-            logger.info(f"Reset to default directory: {self.directory_monitor.default_dir}")
-            
-            return {
-                'success': True,
-                'current_directory': str(self.directory_monitor.default_dir),
-                'message': 'Reset to default sandbox directory'
-            }
-            
-        except Exception as e:
-            logger.error(f"Error resetting directory: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'current_directory': os.getcwd()
-            }
+        return reset_to_default_directory_fn(directory_monitor=self.directory_monitor)
     
     def get_current_directory_info(self) -> Dict[str, Any]:
         """
         Get information about the current working directory.
-        
+
         Returns:
             Dictionary containing current directory information
         """
-        try:
-            current_dir = Path.cwd()
-            
-            return {
-                'current_directory': str(current_dir),
-                'default_directory': str(self.directory_monitor.default_dir),
-                'home_directory': str(self.home_dir),
-                'is_default': current_dir == self.directory_monitor.default_dir,
-                'is_in_home': current_dir.is_relative_to(self.home_dir),
-                'artifacts_directory': str(self.artifacts_dir)
-            }
-            
-        except Exception as e:
-            logger.error(f"Error getting directory info: {e}")
-            return {
-                'error': str(e),
-                'current_directory': os.getcwd()
-            }
+        return get_current_directory_info_fn(
+            directory_monitor=self.directory_monitor,
+            home_dir=self.home_dir,
+            artifacts_dir=self.artifacts_dir
+        )
     
     def cleanup(self):
         """Clean up resources and save state."""
