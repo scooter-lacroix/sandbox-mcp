@@ -12,9 +12,10 @@
     "current_phase_name": "Tzar Review Remediation",
     "tests_passing": 329,
     "tests_skipped": 2,
-    "test_files_added": 20,
+    "test_files_added": 21,
     "tier_0_tasks_completed": 2,
     "tier_0_tasks_total": 3,
+    "tier_0_deferred": ["T1: Process isolation (separate track)"],
     "core_services_created": [
       "ExecutionContextService",
       "ExecutionContext (enhanced with all transport methods)",
@@ -65,7 +66,8 @@
       "phase_5": "36e23ec",
       "web_export_service_split": "6bd34bf",
       "task_a1_execution_context_consolidation": "534b091",
-      "task_a2_http_server_divergence": "81e1ff7"
+      "task_a2_http_server_divergence": "81e1ff7",
+      "task_t1_tdd_tests": "f80a9a6"
     },
     "key_achievements": [
       "Fixed critical syntax error in code_validator.py",
@@ -85,7 +87,8 @@
       "Phase 10 Task A2: Eliminated HTTP/server divergence",
       "Reduced mcp_sandbox_server.py from 539 lines to 58 lines (89% reduction)",
       "Both transports now use shared tool_registry for all MCP tools",
-      "Added transport-parity regression tests (14 tests)"
+      "Added transport-parity regression tests (14 tests)",
+      "Phase 10 Tier 0: Architecture Blockers COMPLETE (2/3 tasks, 1 deferred)"
     ],
     "tzar_review_completed": true,
     "critical_issues_identified": 5,
@@ -97,7 +100,8 @@
     "started_at": "2026-03-11T01:14:06Z",
     "status": "active",
     "workflow_doc": "docs/quality-remediation-track-tzar-review.md",
-    "tier_0_status": "2/3 tasks completed (A1: ExecutionContext, A2: HTTP divergence)",
+    "tier_0_status": "COMPLETE (2/3 tasks, 1 deferred to separate track)",
+    "tier_1_status": "READY TO START - Security blockers",
     "blocking_order": [
       "Tier 0: Architecture Blockers",
       "Tier 1: Security Blockers",

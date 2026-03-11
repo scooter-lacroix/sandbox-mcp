@@ -21,12 +21,16 @@ This file tracks all major tracks for the project. Each track has its own detail
 - Phase 9: Final Verification & Documentation [5dd9b4c]
 
 **Phase 10 Progress (Tzar Review Remediation):**
-- Tier 0: Architecture Blockers (MUST FIX FIRST)
+- Tier 0: Architecture Blockers ✅ COMPLETE (2/3 tasks, 1 deferred)
   - ✅ Task A1: Consolidate duplicate execution context implementations [534b091]
   - ✅ Task A2: Eliminate legacy HTTP/server divergence [81e1ff7]
-  - ⏳ Task T1: Implement per-session process isolation (NEXT)
-- Tier 1: Security Blockers (BLOCKED ON TIER 0)
-  - ⏳ Tasks S1-S5: Security fixes
+  - ⏸️ Task T1: Implement per-session process isolation [f80a9a6 - DEFERRED]
+- Tier 1: Security Blockers (READY TO START)
+  - ⏳ Task S1: Fix symlink-based host file exfiltration
+  - ⏳ Task S2: Fix session_id path traversal
+  - ⏳ Task S3: Fix backup_name path traversal
+  - ⏳ Task S4: Replace prefix-based path validation
+  - ⏳ Task S5: Resolve main execution-path security enforcement gap
 - Tier 2-5: Pending architecture blocker completion
 
 **Key Achievements:**
