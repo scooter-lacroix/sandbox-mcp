@@ -1,10 +1,14 @@
-# Enhanced Sandbox SDK
+# Sandbox MCP
 
-> Python sandbox execution environment with comprehensive MCP server support, featuring enhanced artifact management, interactive REPL, and Manim animation capabilities.
+<!-- mcp-name: io.github.scooter-lacroix/sandbox-mcp -->
+
+> General-purpose Python execution sandbox for MCP clients, with persistent execution, artifact capture, Manim rendering, guarded shell access, and lightweight web app workflows.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastMCP](https://img.shields.io/badge/FastMCP-2.10.5-green.svg)](https://github.com/jlowin/fastmcp)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
+Sandbox MCP is designed to stay broadly useful across coding assistants and MCP directories. It can run Python, generate plots and files, render Manim animations, launch or export small Flask/Streamlit demos, and expose prompts/resources that help an LLM discover how to use the sandbox well.
 
 ## 🎬 Demo: Manim Animation in Action
 
@@ -71,7 +75,7 @@ uv run sandbox-server-stdio
 - **Dual Transport**: HTTP and stdio support
 - **LM Studio Ready**: Drop-in AI model integration
 - **FastMCP Powered**: Modern MCP implementation
-- **Comprehensive Tools**: 12+ available MCP tools
+- **Discoverable Interface Surface**: Tools, prompts, resources, skills, and interactive templates
 
 ## 📦 Installation
 
@@ -115,7 +119,7 @@ pip install -e .
 
 ### Method 3: Package Installation
 
-Install from package manager (when available):
+Install from package manager after publishing to PyPI:
 
 ```bash
 # Using uv
@@ -134,6 +138,9 @@ pip install sandbox-mcp
 sandbox-server
 
 # Start stdio server (LM Studio integration)
+sandbox-mcp
+
+# Backward-compatible stdio alias
 sandbox-server-stdio
 ```
 
@@ -246,6 +253,8 @@ Then configure your application:
 
 ### Available MCP Tools
 
+Sandbox MCP exposes a broader tool surface than the quick table below. For the machine-readable catalog used by marketplace-style listings, see [`docs/marketplace-profile.json`](docs/marketplace-profile.json).
+
 | Tool | Description |
 |------|-------------|
 | `execute` | Execute Python code with artifact capture |
@@ -260,6 +269,33 @@ Then configure your application:
 | `list_manim_animations` | List all created Manim animations |
 | `cleanup_manim_animation` | Clean up specific animation files |
 | `get_manim_examples` | Get example Manim code snippets |
+
+### Skills, Prompts, and Resources
+
+- **Skill**: `manim_storyboard_skill` turns a concept into a storyboard, ready-to-render Manim code, and a suggested sandbox workflow.
+- **Interactive template**: `manim_scene_template` creates a focused Manim scene from a concept, duration target, and quality preset.
+- **Interactive template**: `sandbox_example_template` creates runnable artifact-focused examples for plots, images, tables, or generated files.
+- **Interactive template**: `sandbox_web_app_template` creates small Flask or Streamlit demos ready for `start_web_app` or `export_web_app`.
+- **Resource**: `sandbox://server/overview` exposes a succinct server summary and capability map.
+- **Resource**: `sandbox://catalog/interfaces` exposes a machine-readable list of tools, prompts, resources, skills, and templates.
+
+### Hosted Deployment Notes
+
+For local IDE assistants, use `sandbox-server-stdio`. For remote or directory-hosted use cases such as MCPHub-compatible listings, run the HTTP server behind TLS and authentication, then point clients at the Streamable HTTP endpoint:
+
+```bash
+python -m sandbox.mcp_sandbox_server
+
+# Optional for hosted deployments
+SANDBOX_MCP_HOST=0.0.0.0 SANDBOX_MCP_PORT=8765 python -m sandbox.mcp_sandbox_server
+```
+
+Deployment checklist:
+- Put the HTTP transport behind a reverse proxy or ingress that terminates TLS.
+- Add authentication before exposing the server outside a trusted network.
+- Treat this as a guarded execution environment, not a hardened isolation boundary.
+- Use `export_web_app` and `build_docker_image` when you want to turn sandbox-generated demos into deployable examples.
+- Keep marketplace metadata in sync with [`docs/marketplace-profile.json`](docs/marketplace-profile.json) and deployment notes in [`docs/marketplace.md`](docs/marketplace.md).
 
 ## 💡 Examples
 

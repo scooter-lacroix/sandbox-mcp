@@ -10,13 +10,20 @@ from __future__ import annotations
 
 import importlib.metadata
 
-try:
-    __version__ = importlib.metadata.version("sandbox")
-except importlib.metadata.PackageNotFoundError:
-    __version__ = "0.3.0-dev"
+for _distribution_name in ("sandbox-mcp", "sandbox"):
+    try:
+        __version__ = importlib.metadata.version(_distribution_name)
+        break
+    except importlib.metadata.PackageNotFoundError:
+        continue
+else:
+    __version__ = "0.1.0-dev"
 
 __author__ = "Sandbox Development Team"
-__description__ = "Enhanced Python code execution sandbox with microsandbox integration and FastMCP server support"
+__description__ = (
+    "General-purpose Python execution sandbox with FastMCP integration, "
+    "artifact capture, Manim rendering, and lightweight web app workflows"
+)
 
 # Core modules (always available)
 from . import utils
@@ -71,13 +78,13 @@ LocalSandbox = LazyClass(
 RemoteSandbox = LazyClass(
     "sandbox.sdk.remote_sandbox",
     "RemoteSandbox",
-    install_hint="Install with: pip install sandbox[sdk-remote]",
+    install_hint="Install with: pip install sandbox-mcp[sdk-remote]",
 )
 
 NodeSandbox = LazyClass(
     "sandbox.sdk.node_sandbox",
     "NodeSandbox",
-    install_hint="Install with: pip install sandbox[sdk-remote]",
+    install_hint="Install with: pip install sandbox-mcp[sdk-remote]",
 )
 
 # Core execution context - always available

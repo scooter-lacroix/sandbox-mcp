@@ -3,6 +3,9 @@ Session Service for Sandbox MCP Server.
 
 This module handles session management, replacing duplicate logic
 from the stdio server.
+
+Security C2: Thread-safe operations with proper locking.
+Security C3: Async-safe cleanup without asyncio.run() in daemon threads.
 """
 
 import uuid
@@ -13,7 +16,6 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, List, Callable
 from pathlib import Path
 import logging
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,8 @@ class SessionService:
 
     This service provides unified session creation, retrieval, and cleanup,
     replacing duplicate logic in the stdio server.
+    
+    Thread Safety C2: All shared state access is protected by _lock.
     """
 
     def __init__(self):
@@ -33,9 +37,26 @@ class SessionService:
         self._cleanup_thread = None
         self._running = False
         self._teardown_hooks: Dict[str, List[Callable]] = {}
-
+        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
+        
         # Start background cleanup thread
         self._start_cleanup_thread()
+
+    def _get_event_loop(self) -> asyncio.AbstractEventLoop:
+        """
+        Get or create event loop for async operations.
+        
+        Security C3: Avoids asyncio.run() in daemon threads by using
+        a dedicated event loop with create_task() instead.
+        """
+        if self._event_loop is None or self._event_loop.is_closed():
+            try:
+                self._event_loop = asyncio.get_event_loop()
+            except RuntimeError:
+                # No event loop in this thread, create new one
+                self._event_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self._event_loop)
+        return self._event_loop
 
     def _start_cleanup_thread(self) -> None:
         """Start background cleanup thread for expired sessions."""
@@ -57,12 +78,17 @@ class SessionService:
                 time.sleep(10)  # Wait before retrying on error
 
     def _check_and_cleanup_expired(self) -> None:
-        """Check for and cleanup expired sessions."""
+        """
+        Check for and cleanup expired sessions.
+        
+        Security C3: Uses event loop task scheduling instead of asyncio.run()
+        to avoid RuntimeError when called from daemon thread with active event loop.
+        """
         now = datetime.now(timezone.utc)
         expired_sessions = []
 
         with self._lock:
-            for session_id, session in self._sessions.items():
+            for session_id, session in list(self._sessions.items()):
                 # Check if session has timed out
                 if "last_seen" in session and "timeout_seconds" in session:
                     last_seen = session["last_seen"]
@@ -75,10 +101,19 @@ class SessionService:
                     if now - created_at > timedelta(hours=24):
                         expired_sessions.append(session_id)
 
-                # Remove expired sessions
+        # Clean up expired sessions outside the lock
         for session_id in expired_sessions:
             try:
-                asyncio.run(self.cleanup_session(session_id))
+                # C3 FIX: Use event loop task instead of asyncio.run()
+                loop = self._get_event_loop()
+                if loop.is_running():
+                    # Schedule cleanup as a task if loop is running
+                    asyncio.run_coroutine_threadsafe(
+                        self.cleanup_session(session_id), loop
+                    )
+                else:
+                    # Run cleanup synchronously if loop not running
+                    loop.run_until_complete(self.cleanup_session(session_id))
                 logger.info(f"Expired session cleaned up: {session_id}")
             except Exception as e:
                 logger.error(f"Error cleaning up expired session {session_id}: {e}")
@@ -94,6 +129,8 @@ class SessionService:
     async def create_session(self, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new session.
+        
+        Security C2: Thread-safe with proper locking.
 
         Args:
             session_id: Optional session ID. If not provided, a unique ID will be generated.
@@ -115,7 +152,8 @@ class SessionService:
             "status_history": ["active"],  # Track status transitions
         }
 
-        self._sessions[session_id] = session
+        with self._lock:
+            self._sessions[session_id] = session
         logger.info(f"Created session: {session_id}")
 
         return session
@@ -123,6 +161,8 @@ class SessionService:
     async def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
         """
         Get an existing session by ID with last_seen update.
+        
+        Security C2: Thread-safe with proper locking.
 
         Args:
             session_id: The session identifier.
@@ -140,6 +180,8 @@ class SessionService:
     async def cleanup_session(self, session_id: str) -> bool:
         """
         Clean up and remove a session with proper locking and teardown hooks.
+        
+        Security C2: Thread-safe with proper locking.
 
         Args:
             session_id: The session identifier to cleanup.
@@ -153,9 +195,14 @@ class SessionService:
                 return False
 
             # Execute teardown hooks before removing session
-            await self._execute_teardown_hooks(session_id)
+            session_copy = self._sessions[session_id].copy()
 
-            del self._sessions[session_id]
+        # Execute teardown hooks outside the lock to avoid deadlocks
+        await self._execute_teardown_hooks(session_id)
+
+        with self._lock:
+            if session_id in self._sessions:
+                del self._sessions[session_id]
 
             # Clean up teardown hooks for this session
             if session_id in self._teardown_hooks:
@@ -227,66 +274,20 @@ class SessionService:
     async def get_active_sessions(self) -> List[Dict[str, Any]]:
         """
         Get all active sessions.
+        
+        Security C2: Thread-safe with proper locking.
 
         Returns:
             List of active session dictionaries.
         """
-        return [s for s in self._sessions.values() if s.get("status") == "active"]
-
-    async def update_session(self, session_id: str, updates: Dict[str, Any]) -> bool:
-        """
-        Update session metadata with validation.
-
-        Args:
-            session_id: The session identifier.
-            updates: Dictionary of fields to update.
-
-        Returns:
-            True if session was updated, False if not found.
-        """
-        if session_id not in self._sessions:
-            return False
-
         with self._lock:
-            session = self._sessions[session_id]
-
-            # Validate updates
-            valid_updates = {}
-            for key, value in updates.items():
-                if key == "status":
-                    # Validate status transition
-                    if value not in ["active", "inactive", "expired"]:
-                        logger.warning(f"Invalid status update: {value}")
-                        continue
-                    # Track status history
-                    if "status_history" not in session:
-                        session["status_history"] = []
-                    session["status_history"].append(value)
-                elif key == "timeout_seconds":
-                    # Validate timeout is positive integer
-                    if not isinstance(value, int) or value <= 0:
-                        logger.warning(f"Invalid timeout value: {value}")
-                        continue
-                elif key == "created_at" or key == "last_seen":
-                    # Validate datetime objects
-                    if not isinstance(value, datetime):
-                        logger.warning(f"Invalid datetime for {key}")
-                        continue
-
-                valid_updates[key] = value
-
-            # Apply valid updates
-            session.update(valid_updates)
-
-            # Update last_seen if any changes were made
-            if valid_updates:
-                session["last_seen"] = datetime.now(timezone.utc)
-
-        return True
+            return [s.copy() for s in self._sessions.values() if s.get("status") == "active"]
 
     async def increment_execution_count(self, session_id: str) -> int:
         """
         Increment the execution count for a session.
+        
+        Security C2: Thread-safe with proper locking.
 
         Args:
             session_id: The session identifier.
@@ -294,17 +295,19 @@ class SessionService:
         Returns:
             New execution count.
         """
-        if session_id not in self._sessions:
-            return 0
-
-        self._sessions[session_id]["execution_count"] += 1
-        return self._sessions[session_id]["execution_count"]
+        with self._lock:
+            if session_id not in self._sessions:
+                return 0
+            self._sessions[session_id]["execution_count"] += 1
+            return self._sessions[session_id]["execution_count"]
 
     async def add_artifact(
         self, session_id: str, artifact_info: Dict[str, Any]
     ) -> bool:
         """
         Add an artifact to a session.
+        
+        Security C2: Thread-safe with proper locking.
 
         Args:
             session_id: The session identifier.
@@ -313,14 +316,15 @@ class SessionService:
         Returns:
             True if artifact was added, False if session not found.
         """
-        if session_id not in self._sessions:
-            return False
+        with self._lock:
+            if session_id not in self._sessions:
+                return False
 
-        if "artifacts" not in self._sessions[session_id]:
-            self._sessions[session_id]["artifacts"] = []
+            if "artifacts" not in self._sessions[session_id]:
+                self._sessions[session_id]["artifacts"] = []
 
-        self._sessions[session_id]["artifacts"].append(artifact_info)
-        return True
+            self._sessions[session_id]["artifacts"].append(artifact_info)
+            return True
 
     async def cleanup_all_sessions(self) -> int:
         """

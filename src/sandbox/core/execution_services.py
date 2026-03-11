@@ -3,13 +3,23 @@ Unified Execution Services for Sandbox MCP.
 
 This module consolidates duplicate execution context logic from both
 MCP servers (stdio and HTTP) into a single source of truth.
+
+Security S4: Uses centralized PathValidator for path validation.
 """
 
+from __future__ import annotations
+
 import os
+import shutil
 import sys
-from pathlib import Path
-from typing import Dict, Any, Optional
+import uuid
 from collections import OrderedDict
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from .artifact_backup_service import get_backup_service
+from .path_validation import is_safe_path
 
 
 class ExecutionContext:
@@ -60,32 +70,210 @@ class ExecutionContext:
         self.cache_misses = 0
 
     def _is_valid_project_root(self, path: Path) -> bool:
-        """Validate that project root is within acceptable boundaries."""
-        # Ensure path is absolute and normalized
-        path = path.resolve()
+        """Validate that project root is within acceptable boundaries.
+        
+        Security S4: Uses centralized is_safe_path() with is_relative_to().
+        """
+        return is_safe_path(path.resolve(), require_exists=True)
 
-        # Check for path traversal attempts
-        if ".." in path.parts:
-            return False
+    def _is_valid_path(self, path: str) -> bool:
+        """Validate that a path is safe and within expected boundaries.
 
-        # Check that path is within user's home directory or acceptable locations
-        home_dir = Path.home()
-        if not str(path).startswith(str(home_dir)):
-            # Allow specific project directories
-            allowed_prefixes = [
-                str(home_dir / "Documents"),
-                str(home_dir / "Projects"),
-                str(home_dir / "work"),
-                str(home_dir / "dev"),
-            ]
-            if not any(str(path).startswith(prefix) for prefix in allowed_prefixes):
+        Security S4: Uses centralized is_safe_path() with is_relative_to().
+        """
+        try:
+            path_obj = Path(path).resolve()
+            # Check for path traversal
+            if ".." in path_obj.parts:
                 return False
-
-        # Check that path exists and is a directory
-        if not path.exists() or not path.is_dir():
+            return is_safe_path(path_obj, require_exists=True)
+        except Exception:
             return False
 
-        return True
+    def _setup_environment(self) -> None:
+        """Setup sys.path and virtual environment with robust path detection."""
+        project_root_str = str(self.project_root)
+        project_parent_str = str(self.project_root.parent)
+
+        # Detect venv site-packages dynamically
+        venv_site_packages = None
+        if self.venv_path.exists():
+            for py_version in ["python3.11", "python3.12", "python3.10", "python3.9"]:
+                candidate = self.venv_path / "lib" / py_version / "site-packages"
+                if candidate.exists():
+                    venv_site_packages = candidate
+                    break
+
+        # De-duplicate sys.path using OrderedDict to preserve order
+        current_paths = OrderedDict.fromkeys(sys.path)
+
+        # Paths to add (parent first for package imports, then project root)
+        paths_to_add = [project_parent_str, project_root_str]
+        if venv_site_packages:
+            paths_to_add.append(str(venv_site_packages))
+
+        # Add new paths at the beginning, preserving order and avoiding duplicates
+        new_sys_path = []
+        for path in paths_to_add:
+            if path not in current_paths:
+                new_sys_path.append(path)
+                current_paths[path] = None  # Mark as added
+
+        # Rebuild sys.path with new paths first
+        sys.path[:] = new_sys_path + list(current_paths.keys())
+
+        # Set up virtual environment activation
+        if self.venv_path.exists():
+            venv_python = self.venv_path / "bin" / "python"
+            venv_bin = self.venv_path / "bin"
+
+            if venv_python.exists():
+                # Set environment variables for venv activation
+                os.environ["VIRTUAL_ENV"] = str(self.venv_path)
+
+                # Prepend venv/bin to PATH if not already present
+                current_path = os.environ.get("PATH", "")
+                venv_bin_str = str(venv_bin)
+                if venv_bin_str not in current_path.split(os.pathsep):
+                    os.environ["PATH"] = f"{venv_bin_str}{os.pathsep}{current_path}"
+
+                # Update sys.executable to point to venv python
+                sys.executable = str(venv_python)
+
+    def create_artifacts_dir(self) -> str:
+        """Create a structured directory for execution artifacts within the project."""
+        if self.artifacts_dir and self.artifacts_dir.exists():
+            return str(self.artifacts_dir)
+
+        execution_id = str(uuid.uuid4())[:8]
+        artifacts_root = self.project_root / "artifacts"
+        artifacts_root.mkdir(exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_dir = f"session_{timestamp}_{execution_id}"
+
+        self.artifacts_dir = artifacts_root / session_dir
+        self.artifacts_dir.mkdir(exist_ok=True)
+
+        for subdir in [
+            "plots",
+            "images",
+            "animations",
+            "files",
+            "audio",
+            "data",
+            "models",
+            "documents",
+            "web_assets",
+        ]:
+            (self.artifacts_dir / subdir).mkdir(exist_ok=True)
+
+        return str(self.artifacts_dir)
+
+    def cleanup_artifacts(self) -> None:
+        """Clean up artifacts directory."""
+        if self.artifacts_dir and self.artifacts_dir.exists():
+            shutil.rmtree(self.artifacts_dir, ignore_errors=True)
+
+    def _sanitize_backup_name(self, backup_name: str) -> str:
+        """Delegate to ArtifactBackupService for sanitization."""
+        return get_backup_service().sanitize_backup_name(backup_name)
+
+    def backup_artifacts(self, backup_name: str | None = None) -> str:
+        """Delegate to ArtifactBackupService for backup operations."""
+        return get_backup_service().backup_artifacts(self, backup_name)
+
+    def _cleanup_old_backups(self, backup_root: Path, max_backups: int = 10) -> None:
+        """Clean up old backup directories to prevent storage overflow."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+        try:
+            backups = [d for d in backup_root.iterdir() if d.is_dir()]
+            backups.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+
+            for backup in backups[max_backups:]:
+                shutil.rmtree(backup, ignore_errors=True)
+                logger.info(f"Removed old backup: {backup}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup old backups: {e}")
+
+    def list_artifact_backups(self) -> List[Dict[str, Any]]:
+        """List all available artifact backups."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+        backup_root = self.project_root / "artifact_backups"
+        if not backup_root.exists():
+            return []
+
+        backups: List[Dict[str, Any]] = []
+        for backup_dir in backup_root.iterdir():
+            if backup_dir.is_dir():
+                try:
+                    stat = backup_dir.stat()
+                    size = sum(
+                        f.stat().st_size for f in backup_dir.rglob("*") if f.is_file()
+                    )
+                    backups.append(
+                        {
+                            "name": backup_dir.name,
+                            "path": str(backup_dir),
+                            "created": stat.st_ctime,
+                            "modified": stat.st_mtime,
+                            "size_bytes": size,
+                            "size_mb": size / (1024 * 1024),
+                            "file_count": len(list(backup_dir.rglob("*"))),
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to stat backup {backup_dir}: {e}")
+
+        backups.sort(key=lambda x: x["created"], reverse=True)
+        return backups
+
+    def rollback_artifacts(self, backup_name: str) -> str:
+        """Delegate to ArtifactBackupService for rollback operations."""
+        return get_backup_service().rollback_artifacts(self, backup_name)
+
+    def get_backup_info(self, backup_name: str) -> Dict[str, Any]:
+        """Get detailed information about a specific backup."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+        backup_root = self.project_root / "artifact_backups"
+        backup_path = backup_root / backup_name
+
+        if not backup_path.exists():
+            return {"error": f"Backup '{backup_name}' not found"}
+
+        try:
+            stat = backup_path.stat()
+            files = list(backup_path.rglob("*"))
+
+            categories: Dict[str, List[Dict[str, Any]]] = {}
+            for file_path in files:
+                if file_path.is_file():
+                    category = file_path.parent.name
+                    categories.setdefault(category, []).append(
+                        {
+                            "name": file_path.name,
+                            "size": file_path.stat().st_size,
+                            "extension": file_path.suffix,
+                        }
+                    )
+
+            return {
+                "name": backup_name,
+                "path": str(backup_path),
+                "created": stat.st_ctime,
+                "modified": stat.st_mtime,
+                "total_files": len([f for f in files if f.is_file()]),
+                "total_size_bytes": sum(f.stat().st_size for f in files if f.is_file()),
+                "categories": categories,
+            }
+        except Exception as e:
+            return {"error": f"Failed to get backup info: {str(e)}"}
 
 
 class ExecutionContextService:
@@ -215,7 +403,11 @@ class ExecutionContextService:
                 sys.executable = str(venv_python)
 
     def _is_valid_path(self, path: str) -> bool:
-        """Validate that a path is safe and within expected boundaries."""
+        """Validate that a path is safe and within expected boundaries.
+        
+        Security S4: Uses is_relative_to() instead of startswith() to prevent
+        path traversal attacks via similar prefixes.
+        """
         try:
             # Ensure path is absolute and normalized
             path_obj = Path(path).resolve()
@@ -226,17 +418,17 @@ class ExecutionContextService:
 
             # Check that path is within user's home directory or acceptable locations
             home_dir = Path.home()
-            if not str(path_obj).startswith(str(home_dir)):
+            
+            # SECURITY S4: Use is_relative_to() instead of startswith()
+            if not self._is_path_within_base(path_obj, home_dir):
                 # Allow specific project directories
-                allowed_prefixes = [
-                    str(home_dir / "Documents"),
-                    str(home_dir / "Projects"),
-                    str(home_dir / "work"),
-                    str(home_dir / "dev"),
+                allowed_bases = [
+                    home_dir / "Documents",
+                    home_dir / "Projects",
+                    home_dir / "work",
+                    home_dir / "dev",
                 ]
-                if not any(
-                    str(path_obj).startswith(prefix) for prefix in allowed_prefixes
-                ):
+                if not any(self._is_path_within_base(path_obj, base) for base in allowed_bases):
                     return False
 
             # Check that path exists and is a directory

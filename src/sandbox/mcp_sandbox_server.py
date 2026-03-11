@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastmcp import FastMCP
 import io
 import sys
@@ -10,112 +12,38 @@ import shutil
 import subprocess
 from .core.resource_manager import get_resource_manager
 from .core.security import get_security_manager, SecurityLevel
+from .core.execution_services import ExecutionContext
 import threading
 import time
 import socket
 import base64
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 import logging
+from .server.catalog import SERVER_ID, SERVER_INSTRUCTIONS, register_catalog_primitives
+from . import __version__
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Create FastMCP server named "python-sandbox"
-mcp = FastMCP("python-sandbox")
+# Create FastMCP server with explicit instructions for discovery-oriented clients.
+mcp = FastMCP(
+    SERVER_ID,
+    instructions=SERVER_INSTRUCTIONS,
+    version=__version__,
+)
 
-# Global state for execution context
-class ExecutionContext:
-    def __init__(self):
-        # Compute project_root dynamically from current file location
-        # When installed as package, __file__ is in src/sandbox/, so go up 2 levels
-        current_file = Path(__file__).resolve()
-        if 'src/sandbox' in str(current_file):
-            # Installed package: go from src/sandbox/mcp_*.py to project root
-            self.project_root = current_file.parent.parent.parent
-        else:
-            # Development: assume file is in project root
-            self.project_root = current_file.parent
-        self.venv_path = self.project_root / ".venv"
-        self.artifacts_dir = None
-        self.web_servers = {}  # Track running web servers
-        self.execution_globals = {}  # Persistent globals across executions
-        self._setup_environment()
-    
-    def _setup_environment(self):
-        """Setup sys.path and virtual environment with robust path detection."""
-        # Compute absolute paths
-        project_root_str = str(self.project_root)
-        project_parent_str = str(self.project_root.parent)  # Add parent to find 'sandbox' package
-        
-        # Detect venv site-packages dynamically
-        venv_site_packages = None
-        if self.venv_path.exists():
-            # Try multiple Python versions
-            for py_version in ['python3.11', 'python3.12', 'python3.10', 'python3.9']:
-                candidate = self.venv_path / "lib" / py_version / "site-packages"
-                if candidate.exists():
-                    venv_site_packages = candidate
-                    break
-        
-        # De-duplicate sys.path using OrderedDict to preserve order
-        from collections import OrderedDict
-        current_paths = OrderedDict.fromkeys(sys.path)
-        
-        # Paths to add (parent first for package imports, then project root)
-        paths_to_add = [project_parent_str, project_root_str]
-        if venv_site_packages:
-            paths_to_add.append(str(venv_site_packages))
-        
-        # Add new paths at the beginning, preserving order and avoiding duplicates
-        new_sys_path = []
-        for path in paths_to_add:
-            if path not in current_paths:
-                new_sys_path.append(path)
-                current_paths[path] = None  # Mark as added
-        
-        # Rebuild sys.path with new paths first
-        sys.path[:] = new_sys_path + list(current_paths.keys())
-        
-        # Set up virtual environment activation
-        if self.venv_path.exists():
-            venv_python = self.venv_path / "bin" / "python"
-            venv_bin = self.venv_path / "bin"
-            
-            if venv_python.exists():
-                # Set environment variables for venv activation
-                os.environ['VIRTUAL_ENV'] = str(self.venv_path)
-                
-                # Prepend venv/bin to PATH if not already present
-                current_path = os.environ.get('PATH', '')
-                venv_bin_str = str(venv_bin)
-                if venv_bin_str not in current_path.split(os.pathsep):
-                    os.environ['PATH'] = f"{venv_bin_str}{os.pathsep}{current_path}"
-                
-                # Update sys.executable to point to venv python
-                sys.executable = str(venv_python)
-        
-        logger.info(f"Project root: {self.project_root}")
-        logger.info(f"Virtual env: {self.venv_path if self.venv_path.exists() else 'Not found'}")
-        logger.info(f"sys.executable: {sys.executable}")
-        logger.info(f"sys.path (first 5): {sys.path[:5]}")
-        logger.info(f"VIRTUAL_ENV: {os.environ.get('VIRTUAL_ENV', 'Not set')}")
-    
-    def create_artifacts_dir(self) -> str:
-        """Create a temporary directory for execution artifacts."""
-        execution_id = str(uuid.uuid4())[:8]
-        self.artifacts_dir = Path(tempfile.gettempdir()) / f"sandbox_artifacts_{execution_id}"
-        self.artifacts_dir.mkdir(exist_ok=True)
-        return str(self.artifacts_dir)
-    
-    def cleanup_artifacts(self):
-        """Clean up artifacts directory."""
-        if self.artifacts_dir and self.artifacts_dir.exists():
-            shutil.rmtree(self.artifacts_dir, ignore_errors=True)
-
-# Global execution context
+# Create shared execution context using core services
 ctx = ExecutionContext()
+# Setup environment and log configuration
+ctx._setup_environment()
+logger.info(f"Project root: {ctx.project_root}")
+logger.info(f"Virtual env: {ctx.venv_path if ctx.venv_path.exists() else 'Not found'}")
+logger.info(f"sys.executable: {sys.executable}")
+logger.info(f"sys.path (first 5): {sys.path[:5]}")
+logger.info(f"VIRTUAL_ENV: {os.environ.get('VIRTUAL_ENV', 'Not set')}")
+
 resource_manager = get_resource_manager()
 security_manager = get_security_manager(SecurityLevel.MEDIUM)
 
@@ -179,7 +107,7 @@ def find_free_port(start_port=8000):
             continue
     raise RuntimeError("No free ports available")
 
-def launch_web_app(code: str, app_type: str) -> Optional[str]:
+def launch_web_app(code: str, app_type: str) -> str | None:
     """Launch a web application and return the URL."""
     try:
         resource_manager.check_resource_limits()
@@ -260,7 +188,7 @@ def collect_artifacts() -> List[Dict[str, Any]]:
     return artifacts
 
 @mcp.tool
-def execute(code: str, interactive: bool = False, web_app_type: Optional[str] = None) -> str:
+def execute(code: str, interactive: bool = False, web_app_type: str | None = None) -> str:
     """
     Execute Python code with enhanced features:
     - Robust sys.path and venv activation
@@ -406,7 +334,7 @@ def start_repl() -> str:
     }, indent=2)
 
 @mcp.tool
-def start_web_app(code: str, app_type: str = 'flask') -> str:
+def start_web_app(code: str, app_type: str = "flask") -> str:
     """Launch a web application and return connection details."""
     url = launch_web_app(code, app_type)
     if url:
@@ -447,7 +375,7 @@ def cleanup_temp_artifacts(max_age_hours: int = 24) -> str:
     }, indent=2)
 
 @mcp.tool
-def shell_execute(command: str, working_directory: Optional[str] = None, timeout: int = 30) -> str:
+def shell_execute(command: str, working_directory: str | None = None, timeout: int = 30) -> str:
     """
     Execute a shell command safely in a controlled environment.
     
@@ -597,10 +525,15 @@ def emergency_cleanup() -> str:
             'message': f'Emergency cleanup failed: {str(e)}'
         }, indent=2)
 
+
+register_catalog_primitives(mcp)
+
 def main():
     """Entry point for the HTTP MCP server."""
-    mcp.run(transport="http", host="0.0.0.0", port=8765)
+    host = os.getenv("SANDBOX_MCP_HOST", "127.0.0.1")
+    port = int(os.getenv("SANDBOX_MCP_PORT", "8765"))
+    mcp.run(transport="http", host=host, port=port)
 
 if __name__ == "__main__":
-    # Run FastMCP server over HTTP (Streamable HTTP transport) on all interfaces port 8765
+    # Run FastMCP server over HTTP (Streamable HTTP transport).
     main()

@@ -203,15 +203,16 @@ class ArtifactService:
 
         base_dir = context.sandbox_area / session_id / "artifacts"
 
-        # Verify the resulting path stays within sandbox_area
+        # SECURITY S4: Verify the resulting path stays within sandbox_area
+        # using is_relative_to() instead of startswith()
         try:
             base_dir = base_dir.resolve()
             sandbox_area_resolved = context.sandbox_area.resolve()
-            if not str(base_dir).startswith(str(sandbox_area_resolved)):
+            if not base_dir.is_relative_to(sandbox_area_resolved):
                 raise ValueError(f"Path traversal detected: {base_dir}")
+        except ValueError as e:
+            raise
         except Exception as e:
-            if isinstance(e, ValueError):
-                raise
             raise ValueError(f"Invalid path: {e}")
 
         # Create category subdirectories

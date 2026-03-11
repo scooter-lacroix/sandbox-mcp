@@ -28,6 +28,7 @@ from .artifact_helpers import get_backup_details as get_backup_details_helper
 from .artifact_helpers import list_artifact_backups as list_artifact_backups_helper
 from .artifact_helpers import list_artifacts as list_artifacts_helper
 from .artifact_helpers import rollback_to_backup as rollback_to_backup_helper
+from .catalog import TOOL_METADATA
 from .execution_helpers import (
     collect_artifacts,
     launch_web_app,
@@ -102,6 +103,15 @@ class ToolRegistry:
         artifacts_dir = Path(self.ctx.create_artifacts_dir())
         return get_web_export_service(artifacts_dir)
 
+    def _tool(self, name: str, *, override_name: str | None = None) -> Any:
+        """Return a configured FastMCP tool decorator for a known tool name."""
+        metadata = TOOL_METADATA[name]
+        return self.mcp.tool(
+            name=override_name or name,
+            description=metadata["description"],
+            tags=metadata["tags"],
+        )
+
     def register_all(self) -> None:
         """Register all stdio MCP tools."""
         self.register_execute()
@@ -138,7 +148,7 @@ class ToolRegistry:
         self.register_get_comprehensive_help()
 
     def register_execute(self) -> None:
-        @self.mcp.tool
+        @self._tool("execute")
         def execute(
             code: str,
             interactive: bool = False,
@@ -154,27 +164,27 @@ class ToolRegistry:
             )
 
     def register_list_artifacts(self) -> None:
-        @self.mcp.tool
+        @self._tool("list_artifacts")
         def list_artifacts() -> str:
             return list_artifacts_helper(self._collect_artifacts)
 
     def register_clear_cache(self) -> None:
-        @self.mcp.tool
+        @self._tool("clear_cache")
         def clear_cache(important_only: bool = False) -> str:
             return clear_cache_helper(self.ctx, important_only=important_only)
 
     def register_cleanup_artifacts(self) -> None:
-        @self.mcp.tool
+        @self._tool("cleanup_artifacts")
         def cleanup_artifacts() -> str:
             return cleanup_artifacts_helper(self.ctx)
 
     def register_start_repl(self) -> None:
-        @self.mcp.tool
+        @self._tool("start_repl")
         def start_repl() -> str:
             return start_repl_helper(self.ctx)
 
     def register_start_web_app(self) -> None:
-        @self.mcp.tool
+        @self._tool("start_web_app")
         def start_web_app(code: str, app_type: str = "flask") -> str:
             url = self._launch_web_app(code, app_type)
             if url:
@@ -197,7 +207,7 @@ class ToolRegistry:
             )
 
     def register_cleanup_temp_artifacts(self) -> None:
-        @self.mcp.tool
+        @self._tool("cleanup_temp_artifacts")
         def cleanup_temp_artifacts(max_age_hours: int = 24) -> str:
             return cleanup_temp_artifacts_helper(
                 self.logger,
@@ -205,7 +215,7 @@ class ToolRegistry:
             )
 
     def register_shell_execute(self) -> None:
-        @self.mcp.tool
+        @self._tool("shell_execute")
         def shell_execute(
             command: str,
             working_directory: str | None = None,
@@ -220,7 +230,7 @@ class ToolRegistry:
             )
 
     def register_create_manim_animation(self) -> None:
-        @self.mcp.tool
+        @self._tool("create_manim_animation")
         def create_manim_animation(
             manim_code: str,
             quality: str = "medium_quality",
@@ -233,27 +243,27 @@ class ToolRegistry:
             )
 
     def register_list_manim_animations(self) -> None:
-        @self.mcp.tool
+        @self._tool("list_manim_animations")
         def list_manim_animations() -> str:
             return list_manim_animations_helper(self.ctx)
 
     def register_cleanup_manim_animation(self) -> None:
-        @self.mcp.tool
+        @self._tool("cleanup_manim_animation")
         def cleanup_manim_animation(animation_id: str) -> str:
             return cleanup_manim_animation_helper(animation_id, self.ctx)
 
     def register_get_manim_examples(self) -> None:
-        @self.mcp.tool(name="get_manim_examples")
+        @self._tool("get_manim_examples")
         def get_manim_examples_tool() -> str:
             return get_manim_examples()
 
     def register_get_execution_info(self) -> None:
-        @self.mcp.tool
+        @self._tool("get_execution_info")
         def get_execution_info() -> str:
             return get_execution_info_helper(self.ctx)
 
     def register_get_artifact_report(self) -> None:
-        @self.mcp.tool
+        @self._tool("get_artifact_report")
         def get_artifact_report() -> str:
             return get_artifact_report_helper(
                 self.ctx,
@@ -261,7 +271,7 @@ class ToolRegistry:
             )
 
     def register_categorize_artifacts(self) -> None:
-        @self.mcp.tool
+        @self._tool("categorize_artifacts")
         def categorize_artifacts() -> str:
             return categorize_artifacts_helper(
                 self.ctx,
@@ -269,7 +279,7 @@ class ToolRegistry:
             )
 
     def register_cleanup_artifacts_by_type(self) -> None:
-        @self.mcp.tool
+        @self._tool("cleanup_artifacts_by_type")
         def cleanup_artifacts_by_type(artifact_type: str) -> str:
             return cleanup_artifacts_by_type_helper(
                 artifact_type=artifact_type,
@@ -279,7 +289,7 @@ class ToolRegistry:
             )
 
     def register_start_enhanced_repl(self) -> None:
-        @self.mcp.tool
+        @self._tool("start_enhanced_repl")
         def start_enhanced_repl() -> str:
             return start_enhanced_repl_helper(
                 self.ctx,
@@ -304,7 +314,7 @@ class ToolRegistry:
             )
 
     def register_execute_with_artifacts(self) -> None:
-        @self.mcp.tool
+        @self._tool("execute_with_artifacts")
         def execute_with_artifacts(
             code: str,
             track_artifacts: bool = True,
@@ -318,27 +328,27 @@ class ToolRegistry:
             )
 
     def register_backup_current_artifacts(self) -> None:
-        @self.mcp.tool
+        @self._tool("backup_current_artifacts")
         def backup_current_artifacts(backup_name: str | None = None) -> str:
             return backup_current_artifacts_helper(self.ctx, backup_name)
 
     def register_list_artifact_backups(self) -> None:
-        @self.mcp.tool
+        @self._tool("list_artifact_backups")
         def list_artifact_backups() -> str:
             return list_artifact_backups_helper(self.ctx)
 
     def register_rollback_to_backup(self) -> None:
-        @self.mcp.tool
+        @self._tool("rollback_to_backup")
         def rollback_to_backup(backup_name: str) -> str:
             return rollback_to_backup_helper(self.ctx, backup_name)
 
     def register_get_backup_details(self) -> None:
-        @self.mcp.tool
+        @self._tool("get_backup_details")
         def get_backup_details(backup_name: str) -> str:
             return get_backup_details_helper(self.ctx, backup_name)
 
     def register_cleanup_old_backups(self) -> None:
-        @self.mcp.tool
+        @self._tool("cleanup_old_backups")
         def cleanup_old_backups(max_backups: int = 10) -> str:
             return cleanup_old_backups_helper(
                 self.ctx,
@@ -347,7 +357,7 @@ class ToolRegistry:
             )
 
     def register_export_web_app(self) -> None:
-        @self.mcp.tool
+        @self._tool("export_web_app")
         def export_web_app(
             code: str,
             app_type: str = "flask",
@@ -360,50 +370,50 @@ class ToolRegistry:
             return json.dumps(result, indent=2)
 
     def register_list_web_app_exports(self) -> None:
-        @self.mcp.tool
+        @self._tool("list_web_app_exports")
         def list_web_app_exports() -> str:
             service = self._web_export_service()
             result = service.list_web_app_exports()
             return json.dumps(result, indent=2)
 
     def register_get_export_details(self) -> None:
-        @self.mcp.tool
+        @self._tool("get_export_details")
         def get_export_details(export_name: str) -> str:
             service = self._web_export_service()
             result = service.get_export_details(export_name)
             return json.dumps(result, indent=2)
 
     def register_build_docker_image(self) -> None:
-        @self.mcp.tool
+        @self._tool("build_docker_image")
         def build_docker_image(export_name: str) -> str:
             service = self._web_export_service()
             result = service.build_docker_image(export_name)
             return json.dumps(result, indent=2)
 
     def register_cleanup_web_app_export(self) -> None:
-        @self.mcp.tool
+        @self._tool("cleanup_web_app_export")
         def cleanup_web_app_export(export_name: str) -> str:
             service = self._web_export_service()
             result = service.cleanup_web_app_export(export_name)
             return json.dumps(result, indent=2)
 
     def register_install_package(self) -> None:
-        @self.mcp.tool
+        @self._tool("install_package")
         def install_package(package_name: str, version: str | None = None) -> str:
             return install_package_helper(package_name, self.ctx, version)
 
     def register_list_installed_packages(self) -> None:
-        @self.mcp.tool
+        @self._tool("list_installed_packages")
         def list_installed_packages() -> str:
             return list_installed_packages_helper(self.ctx)
 
     def register_get_sandbox_limitations(self) -> None:
-        @self.mcp.tool
+        @self._tool("get_sandbox_limitations")
         def get_sandbox_limitations() -> str:
             return get_sandbox_limitations_info(self.ctx)
 
     def register_get_comprehensive_help(self) -> None:
-        @self.mcp.tool
+        @self._tool("get_comprehensive_help")
         def get_comprehensive_help() -> str:
             return get_comprehensive_help_info()
 

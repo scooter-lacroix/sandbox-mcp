@@ -3,11 +3,12 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "sandbox"
+name = "sandbox-mcp"
 version = "0.1.0"
-description = "Python code execution sandbox with FastMCP server integration"
+description = "General-purpose Python execution sandbox with FastMCP tools, artifact capture, Manim rendering, and web demo workflows"
 readme = "README.md"
 requires-python = ">=3.11"
+keywords = ["mcp", "sandbox", "python", "manim", "artifacts", "fastmcp"]
 dependencies = [
     "aiohttp>=3.9.0",
     "fastmcp>=2.10.5",
@@ -24,7 +25,15 @@ dependencies = [
     "seaborn==0.12.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/scooter-lacroix/sandbox-mcp"
+Documentation = "https://github.com/scooter-lacroix/sandbox-mcp/blob/main/README.md"
+Repository = "https://github.com/scooter-lacroix/sandbox-mcp"
+Issues = "https://github.com/scooter-lacroix/sandbox-mcp/issues"
+
 [project.scripts]
+sandbox-mcp = "sandbox.mcp_sandbox_server_stdio:main"
+sandbox-mcp-http = "sandbox.mcp_sandbox_server:main"
 sandbox-server = "sandbox.mcp_sandbox_server:main"
 sandbox-server-stdio = "sandbox.mcp_sandbox_server_stdio:main"
 

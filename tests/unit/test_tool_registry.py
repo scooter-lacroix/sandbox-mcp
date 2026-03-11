@@ -16,18 +16,19 @@ class FakeMCP:
 
     def __init__(self) -> None:
         self.tools = {}
+        self.tool_metadata = {}
 
     def tool(self, fn=None, **_kwargs):
+        def register(inner):
+            tool_name = _kwargs.get("name") or inner.__name__
+            self.tools[tool_name] = inner
+            self.tool_metadata[tool_name] = _kwargs
+            return inner
+
         if fn is None:
+            return register
 
-            def decorator(inner):
-                self.tools[inner.__name__] = inner
-                return inner
-
-            return decorator
-
-        self.tools[fn.__name__] = fn
-        return fn
+        return register(fn)
 
 
 @pytest.fixture
@@ -113,6 +114,7 @@ def test_register_all_registers_expected_tools(registry):
         "create_manim_animation",
         "list_manim_animations",
         "cleanup_manim_animation",
+        "get_manim_examples",
         "get_execution_info",
         "get_artifact_report",
         "categorize_artifacts",
@@ -136,6 +138,16 @@ def test_register_all_registers_expected_tools(registry):
     }
 
     assert expected.issubset(set(mcp.tools))
+
+
+def test_registered_tools_include_descriptions(registry):
+    instance, mcp = registry
+
+    instance.register_execute()
+    instance.register_get_manim_examples()
+
+    assert "persistent state" in mcp.tool_metadata["execute"]["description"]
+    assert "Manim" in mcp.tool_metadata["get_manim_examples"]["description"]
 
 
 def test_execute_wrapper_calls_helper(registry, monkeypatch):

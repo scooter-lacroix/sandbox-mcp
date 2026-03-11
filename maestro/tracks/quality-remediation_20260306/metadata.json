@@ -1,16 +1,16 @@
 {
   "track_id": "quality-remediation_20260306",
   "type": "refactor",
-  "status": "in_progress",
+  "status": "remediation_in_progress",
   "created_at": "2026-03-06T22:18:27Z",
-  "updated_at": "2026-03-07T18:58:12Z",
+  "updated_at": "2026-03-11T01:14:06Z",
   "description": "Complete remediation of Sandbox MCP Server - fix all critical issues, add tests, refactor architecture, and establish CI/CD pipeline",
   "progress": {
-    "phases_completed": 5,
-    "total_phases": 9,
-    "current_phase": 6,
-    "current_phase_name": "Import Architecture Cleanup",
-    "tests_passing": 234,
+    "phases_completed": 9,
+    "total_phases": 10,
+    "current_phase": 10,
+    "current_phase_name": "Tzar Review Remediation",
+    "tests_passing": 337,
     "tests_skipped": 2,
     "test_files_added": 16,
     "core_services_created": [
@@ -61,7 +61,7 @@
     "key_achievements": [
       "Fixed critical syntax error in code_validator.py",
       "Added missing aiohttp dependency",
-      "Established test infrastructure (234 passing unit tests, 2 skipped)",
+      "Established test infrastructure and regression coverage growth",
       "Fixed version inconsistency (now reads from package metadata)",
       "Extracted core services (execution, artifact, patching)",
       "Decoupled SDK from server implementation",
@@ -69,6 +69,29 @@
       "Reduced mcp_sandbox_server_stdio.py from 2727 lines to 302 lines",
       "Added dedicated tests for tool registry, REPL helpers, and refactored stdio server",
       "Verified compileall, sandbox import, and MCP stdio server startup after refactor"
+    ],
+    "tzar_review_completed": true,
+    "critical_issues_identified": 5,
+    "security_vulnerabilities": 5,
+    "coverage_target": "95%",
+    "current_coverage": "49%"
+  },
+  "remediation": {
+    "started_at": "2026-03-11T01:14:06Z",
+    "status": "active",
+    "workflow_doc": "docs/quality-remediation-track-tzar-review.md",
+    "blocking_order": [
+      "Tier 0: Architecture Blockers",
+      "Tier 1: Security Blockers",
+      "Tier 2: Correctness, Concurrency, and Shared-State Fixes",
+      "Tier 3: Quality, Maintainability, and Optimization Work",
+      "Tier 4: Test Coverage Recovery",
+      "Tier 5: Documentation, Verification, and Re-Review Gates"
+    ],
+    "must_not_use_as_completion_evidence": [
+      "plan status alone",
+      "metadata alone",
+      "git commits alone"
     ]
   }
 }

@@ -182,7 +182,10 @@ class PersistentExecutionContext:
     """
     
     def __init__(self, session_id: Optional[str] = None):
-        self.session_id = session_id or str(uuid.uuid4())
+        # SECURITY S2: Validate session_id before use to prevent path traversal
+        raw_session_id = session_id or str(uuid.uuid4())
+        self.session_id = self._validate_session_id(raw_session_id)
+        
         self.project_root = self._detect_project_root()
         self.venv_path = self.project_root / ".venv"
         self.session_dir = self.project_root / "sessions" / self.session_id
@@ -221,6 +224,55 @@ class PersistentExecutionContext:
         self._load_persistent_state()
 
         logger.info(f"Initialized persistent execution context for session {self.session_id}")
+
+    @staticmethod
+    def _validate_session_id(session_id: str) -> str:
+        """
+        Validate session_id to prevent path traversal and injection attacks.
+        
+        Security S2: Only alphanumeric characters, hyphens, and underscores are allowed.
+        Path traversal sequences, special characters, and null bytes are rejected.
+        
+        Args:
+            session_id: The session identifier to validate
+            
+        Returns:
+            The validated session_id
+            
+        Raises:
+            ValueError: If session_id contains invalid characters or patterns
+        """
+        if not session_id:
+            raise ValueError("session_id cannot be empty")
+            
+        # Check for null bytes
+        if '\x00' in session_id:
+            raise ValueError("session_id cannot contain null bytes")
+            
+        # Check for newlines or whitespace
+        if any(c in session_id for c in '\n\r\t '):
+            raise ValueError("session_id cannot contain whitespace")
+            
+        # Check for path traversal patterns
+        if '..' in session_id:
+            raise ValueError("session_id cannot contain '..' (path traversal)")
+            
+        # Check for path separators
+        if '/' in session_id or '\\' in session_id:
+            raise ValueError("session_id cannot contain path separators")
+            
+        # Only allow alphanumeric characters, hyphens, and underscores
+        safe_id = session_id.replace('-', '').replace('_', '')
+        if not safe_id.isalnum():
+            raise ValueError(
+                f"session_id must be alphanumeric with hyphens/underscores: {session_id!r}"
+            )
+            
+        # Limit length to prevent DoS
+        if len(session_id) > 128:
+            raise ValueError(f"session_id too long: {len(session_id)} > 128")
+            
+        return session_id
     
     def _detect_project_root(self) -> Path:
         """Detect project root with improved logic."""
@@ -662,12 +714,29 @@ class PersistentExecutionContext:
             return result
     
     def _get_current_artifacts(self) -> Set[str]:
-        """Get current set of artifact files."""
+        """Get current set of artifact files.
+        
+        Security: Symlinks are skipped to prevent host file exfiltration attacks.
+        """
         artifacts = set()
         if self.artifacts_dir.exists():
-            for file_path in self.artifacts_dir.rglob('*'):
-                if file_path.is_file():
-                    artifacts.add(str(file_path.relative_to(self.artifacts_dir)))
+            artifacts_root = self.artifacts_dir.resolve()
+            for file_path in artifacts_root.rglob('*'):
+                # SECURITY S1: Skip symlinks to prevent host file exfiltration
+                if file_path.is_symlink():
+                    continue
+                if not file_path.is_file():
+                    continue
+                    
+                # SECURITY S1: Verify resolved path is still within artifacts_root
+                try:
+                    resolved_path = file_path.resolve()
+                    if not resolved_path.is_relative_to(artifacts_root):
+                        continue
+                except (ValueError, OSError):
+                    continue
+                    
+                artifacts.add(str(file_path.relative_to(artifacts_root)))
         return artifacts
     
     def categorize_artifacts(self) -> Dict[str, List[Dict[str, Any]]]:

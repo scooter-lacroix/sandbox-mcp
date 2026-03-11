@@ -1,0 +1,24 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.scooter-lacroix/sandbox-mcp",
+  "title": "Sandbox MCP",
+  "description": "General-purpose Python sandbox for MCP with artifacts, Manim, shell tools, and web demos.",
+  "version": "0.1.0",
+  "websiteUrl": "https://github.com/scooter-lacroix/sandbox-mcp",
+  "repository": {
+    "source": "github",
+    "id": "1018357006",
+    "url": "https://github.com/scooter-lacroix/sandbox-mcp"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "sandbox-mcp",
+      "registryBaseUrl": "https://pypi.org",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

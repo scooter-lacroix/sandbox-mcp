@@ -2875,7 +2875,7 @@ wheels = [
 ]
 
 [[package]]
-name = "sandbox"
+name = "sandbox-mcp"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

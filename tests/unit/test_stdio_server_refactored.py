@@ -112,7 +112,7 @@ class TestRefactoredStdioServerTools:
 
         tools = await mcp.get_tools()
 
-        assert len(tools) >= 31
+        assert len(tools) >= 32
 
     @pytest.mark.asyncio
     async def test_key_tools_can_be_looked_up(self):
@@ -126,6 +126,90 @@ class TestRefactoredStdioServerTools:
         assert execute_tool is not None
         assert repl_tool is not None
         assert help_tool is not None
+
+    @pytest.mark.asyncio
+    async def test_tool_descriptions_are_exposed(self):
+        """Important tools should provide concise descriptions to MCP clients."""
+        from sandbox.mcp_sandbox_server_stdio import mcp
+
+        tools = await mcp.get_tools()
+
+        assert tools["execute"].description is not None
+        assert "persistent state" in tools["execute"].description
+        assert tools["create_manim_animation"].description is not None
+        assert "Manim" in tools["create_manim_animation"].description
+
+
+class TestRefactoredStdioServerPromptsAndResources:
+    """Smoke tests for prompt and resource registration."""
+
+    @pytest.mark.asyncio
+    async def test_prompts_are_registered(self):
+        """Interactive templates and skills should be exposed as MCP prompts."""
+        from sandbox.mcp_sandbox_server_stdio import mcp
+
+        prompts = await mcp.get_prompts()
+
+        expected_prompts = {
+            "manim_storyboard_skill",
+            "manim_scene_template",
+            "sandbox_example_template",
+            "sandbox_web_app_template",
+        }
+
+        assert expected_prompts.issubset(set(prompts.keys()))
+
+    @pytest.mark.asyncio
+    async def test_prompt_can_render(self):
+        """The skill prompt should render a usable user-facing template."""
+        from sandbox.mcp_sandbox_server_stdio import mcp
+
+        prompts = await mcp.get_prompts()
+        rendered = await prompts["manim_storyboard_skill"].render(
+            {"concept": "Binary search"}
+        )
+
+        assert rendered
+        assert "Concept: Binary search" in rendered[0].content.text
+
+    @pytest.mark.asyncio
+    async def test_resources_are_registered(self):
+        """Catalog resources should be available for capability discovery."""
+        from sandbox.mcp_sandbox_server_stdio import mcp
+
+        resources = await mcp.get_resources()
+        templates = await mcp.get_resource_templates()
+
+        assert "sandbox://server/overview" in resources
+        assert "sandbox://catalog/interfaces" in resources
+        assert "sandbox://catalog/skill/{skill_name}" in templates
+        assert "sandbox://catalog/template/{template_name}" in templates
+
+    @pytest.mark.asyncio
+    async def test_catalog_resource_returns_structured_content(self):
+        """The server overview resource should expose a readable JSON summary."""
+        from sandbox.mcp_sandbox_server_stdio import mcp
+
+        resources = await mcp.get_resources()
+        overview = await resources["sandbox://server/overview"].read()
+
+        assert "Sandbox MCP" in overview
+        assert "streamable-http" in overview
+
+    @pytest.mark.asyncio
+    async def test_template_resource_can_be_materialized(self):
+        """Template resources should expand into concrete resource content."""
+        from sandbox.mcp_sandbox_server_stdio import mcp
+
+        templates = await mcp.get_resource_templates()
+        template = templates["sandbox://catalog/template/{template_name}"]
+        resource = await template.create_resource(
+            "sandbox://catalog/template/manim_scene_template",
+            {"template_name": "manim_scene_template"},
+        )
+        content = await resource.read()
+
+        assert "Manim Scene Template" in content
 
 
 class TestRefactoredStdioServerStartup:

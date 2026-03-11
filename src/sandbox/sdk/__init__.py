@@ -10,10 +10,14 @@ from __future__ import annotations
 # Version is read from package metadata to ensure consistency
 import importlib.metadata
 
-try:
-    __version__ = importlib.metadata.version("sandbox")
-except importlib.metadata.PackageNotFoundError:
-    __version__ = "0.3.0-dev"
+for _distribution_name in ("sandbox-mcp", "sandbox"):
+    try:
+        __version__ = importlib.metadata.version(_distribution_name)
+        break
+    except importlib.metadata.PackageNotFoundError:
+        continue
+else:
+    __version__ = "0.1.0-dev"
 
 # Core classes - always available
 from .base_sandbox import BaseSandbox
@@ -30,13 +34,13 @@ from ..utils.lazy_imports import LazyClass
 RemoteSandbox = LazyClass(
     "sandbox.sdk.remote_sandbox",
     "RemoteSandbox",
-    install_hint="Install with: pip install sandbox[sdk-remote]",
+    install_hint="Install with: pip install sandbox-mcp[sdk-remote]",
 )
 
 NodeSandbox = LazyClass(
     "sandbox.sdk.node_sandbox",
     "NodeSandbox",
-    install_hint="Install with: pip install sandbox[sdk-remote]",
+    install_hint="Install with: pip install sandbox-mcp[sdk-remote]",
 )
 
 # PythonSandbox - lazy loaded

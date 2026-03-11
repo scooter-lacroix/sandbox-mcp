@@ -270,7 +270,7 @@ Ensure all acceptance criteria met and document improvements
 
 ### Tier 0: Architecture Blockers (MUST FIX FIRST)
 
-- [~] Task: A1 — Consolidate duplicate execution context implementations
+- [x] Task: A1 — Consolidate duplicate execution context implementations [COMPLETED]
   - [x] Subtask: Document the active responsibilities split across `src/sandbox/mcp_sandbox_server_stdio.py`, `src/sandbox/mcp_sandbox_server.py`, `src/sandbox/core/execution_services.py`, and `src/sandbox/core/execution_context.py`
     - Evidence (LeIndex analysis 2026-03-11):
     - `mcp_sandbox_server_stdio.py:ExecutionContext` (lines 41-347): Local class with backup/rollback/artifact methods, used as global singleton
@@ -284,9 +284,19 @@ Ensure all acceptance criteria met and document improvements
     - **Service Layer:** `ExecutionContextService` in `core/execution_services.py` for managing contexts
     - **Backup/Rollback:** Move stdio server's backup/rollback methods to `ArtifactBackupService` in core
     - **Both transports** will use core services via dependency injection through `ToolRegistry`
-  - [ ] Subtask: Remove stdio server-local `ExecutionContext`
-  - [ ] Subtask: Remove HTTP server-local `ExecutionContext`
-  - [ ] Subtask: Verify transport bootstraps only wire shared services instead of duplicating them
+  - [x] Subtask: Remove stdio server-local `ExecutionContext` [COMPLETED]
+    - Implementation: Enhanced `ExecutionContext` in `core/execution_services.py` with missing methods
+    - stdio server now imports and uses `ExecutionContext` from `core.execution_services`
+    - All 315 unit tests pass
+  - [x] Subtask: Remove HTTP server-local `ExecutionContext` [COMPLETED]
+    - Implementation: HTTP server now imports and uses `ExecutionContext` from `core.execution_services`
+    - Updated to use `str | None` instead of `Optional[str]` for consistency
+    - All 315 unit tests pass
+  - [x] Subtask: Verify transport bootstraps only wire shared services instead of duplicating them [COMPLETED]
+    - Both transports use `ExecutionContext` from `core.execution_services`
+    - Both transports use `get_resource_manager()` and `get_security_manager()`
+    - Both transports use shared catalog primitives from `server.catalog`
+    - Note: HTTP server still has its own tool implementations (addressed in Task A2)
 
 - [ ] Task: A2 — Eliminate legacy HTTP/server divergence
   - [ ] Subtask: Refactor `src/sandbox/mcp_sandbox_server.py` onto shared execution, patching, and artifact helpers

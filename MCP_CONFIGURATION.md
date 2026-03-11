@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Sandbox MCP Server provides a secure Python code execution environment with enhanced directory management, artifact tracking, and comprehensive logging capabilities.
+The Sandbox MCP Server provides a general-purpose Python execution environment for MCP clients, with persistent execution state, artifact tracking, guarded shell access, Manim rendering, and lightweight Flask/Streamlit workflows.
 
 ## Key Features
 
@@ -124,11 +124,14 @@ uvx git+https://github.com/scooter-lacroix/sandbox-mcp.git
 
 ### 6. HTTP/HTTPS Server Mode
 
-For web-based integrations:
+For web-based integrations and hosted MCP directory listings:
 
 ```bash
 # Start HTTP server
-python -m sandbox.mcp_sandbox_server --port 8765
+python -m sandbox.mcp_sandbox_server
+
+# Optional for hosted deployments
+SANDBOX_MCP_HOST=0.0.0.0 SANDBOX_MCP_PORT=8765 python -m sandbox.mcp_sandbox_server
 
 # Or using the convenience script
 python run_sandbox.py mcp-http
@@ -148,6 +151,15 @@ Configuration:
   }
 }
 ```
+
+### Marketplace Deployment Notes
+
+If you plan to publish a hosted endpoint on MCPHub or a similar directory:
+
+- Put the HTTP server behind TLS termination and authentication.
+- Treat the sandbox as a guarded environment, not as a hardened isolation boundary.
+- Consider an outer isolation layer such as Docker or a VM for internet-facing deployments.
+- Keep listing metadata aligned with `README.md`, `docs/marketplace.md`, and `docs/marketplace-profile.json`.
 
 ### 7. Git Link Installation
 
