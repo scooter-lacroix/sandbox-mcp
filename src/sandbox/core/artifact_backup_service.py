@@ -245,6 +245,9 @@ class ArtifactBackupService:
         """
         Get detailed information about a specific backup.
 
+        Security S3: Sanitizes backup_name and verifies path containment
+        to prevent path traversal attacks.
+
         Args:
             ctx: Context with project_root attribute
             backup_name: Name of the backup
@@ -252,8 +255,18 @@ class ArtifactBackupService:
         Returns:
             Dictionary with backup information
         """
+        # SECURITY S3: Sanitize backup_name to prevent path traversal
+        try:
+            safe_backup_name = self.sanitize_backup_name(backup_name)
+        except ValueError as e:
+            return {"error": f"Invalid backup name: {e}"}
+
         backup_root = ctx.project_root / "artifact_backups"
-        backup_path = backup_root / backup_name
+        backup_path = backup_root / safe_backup_name
+
+        # Additional check: verify path is within backup_root
+        if not backup_path.resolve().is_relative_to(backup_root.resolve()):
+            return {"error": f"Invalid backup path: '{backup_name}'"}
 
         if not backup_path.exists():
             return {"error": f"Backup '{backup_name}' not found"}

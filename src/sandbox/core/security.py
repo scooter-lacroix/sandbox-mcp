@@ -211,26 +211,35 @@ class FileSystemSecurity:
     def is_path_allowed(self, path: str) -> Tuple[bool, Optional[str]]:
         """
         Check if a path is allowed for access.
-        
+
+        Security S4: Uses is_relative_to() instead of startswith() to prevent
+        path traversal via symlinks and similar-prefix attacks.
+
         Args:
             path: The path to check
-            
+
         Returns:
             Tuple of (is_allowed, reason)
         """
         try:
             resolved_path = Path(path).resolve()
-            path_str = str(resolved_path)
-            
+
             # Check if path is explicitly allowed
+            # Security S4: When allowed_paths is configured, only allow paths within them
             if self.allowed_paths:
                 for allowed in self.allowed_paths:
-                    if path_str.startswith(allowed):
-                        return True, None
-            
+                    allowed_path = Path(allowed).resolve()
+                    if resolved_path.is_relative_to(allowed_path):
+                        # Path is allowed, now check if it's also restricted
+                        break
+                else:
+                    # No allowed path matched, deny by default
+                    return False, f"Path '{path}' is not within allowed paths"
+
             # Check if path is restricted
             for restricted in self.restricted_paths:
-                if path_str.startswith(restricted):
+                restricted_path = Path(restricted).resolve()
+                if resolved_path.is_relative_to(restricted_path):
                     return False, f"Path '{path}' is in restricted area: {restricted}"
             
             # Check for dangerous file extensions

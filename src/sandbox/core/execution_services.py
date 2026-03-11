@@ -497,10 +497,12 @@ class ExecutionContextService:
         artifacts_dir = context.sandbox_area / session_id / "artifacts"
 
         # Resolve and verify the path is still within sandbox_area
+        # Security S4: Use is_relative_to() instead of startswith() to prevent
+        # path traversal via symlinks and similar-prefix attacks
         try:
             artifacts_dir = artifacts_dir.resolve()
             sandbox_area_resolved = context.sandbox_area.resolve()
-            if not str(artifacts_dir).startswith(str(sandbox_area_resolved)):
+            if not artifacts_dir.is_relative_to(sandbox_area_resolved):
                 raise ValueError(f"Path traversal detected: {artifacts_dir}")
         except Exception as e:
             if isinstance(e, ValueError):

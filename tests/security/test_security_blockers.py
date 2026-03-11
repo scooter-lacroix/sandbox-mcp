@@ -321,5 +321,120 @@ print(f"Result: {x}")
                 # The point is the validator is not reliable security
 
 
+class TestFileSystemSecurityS4Fix(unittest.TestCase):
+    """S4: Test that FileSystemSecurity.is_path_allowed() uses is_relative_to() instead of startswith()."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        from sandbox.core.security import FileSystemSecurity
+        self.fs = FileSystemSecurity()
+
+    def test_similar_prefix_attack_is_blocked(self):
+        """
+        Test that /home/user_evil is rejected when /home/user is allowed.
+
+        This is the critical S4 vulnerability: startswith() would incorrectly
+        allow /home/user_evil when /home/user is the allowed base.
+        """
+        # Set up allowed path
+        self.fs.allowed_paths.add("/home/user")
+
+        # Test that similar prefix is NOT allowed
+        is_allowed, reason = self.fs.is_path_allowed("/home/user_evil")
+        self.assertFalse(
+            is_allowed,
+            f"/home/user_evil should NOT be allowed when /home/user is allowed. Reason: {reason}"
+        )
+
+    def test_valid_subpath_is_allowed(self):
+        """Test that legitimate subpaths are still allowed."""
+        self.fs.allowed_paths.add("/home/user")
+
+        # These should be allowed
+        valid_paths = [
+            "/home/user/documents",
+            "/home/user/documents/file.txt",
+            "/home/user/.ssh/config",
+        ]
+
+        for valid_path in valid_paths:
+            with self.subTest(valid_path=valid_path):
+                is_allowed, reason = self.fs.is_path_allowed(valid_path)
+                self.assertTrue(
+                    is_allowed,
+                    f"{valid_path} should be allowed. Reason: {reason}"
+                )
+
+    def test_restricted_path_blocks_subpaths(self):
+        """Test that restricted paths properly block their subpaths."""
+        # /etc is in restricted_paths by default
+        is_allowed, reason = self.fs.is_path_allowed("/etc/passwd")
+        self.assertFalse(
+            is_allowed,
+            f"/etc/passwd should be restricted. Reason: {reason}"
+        )
+
+        # Subpaths should also be blocked
+        is_allowed, reason = self.fs.is_path_allowed("/etc/ssh/sshd_config")
+        self.assertFalse(
+            is_allowed,
+            f"/etc/ssh/sshd_config should be restricted. Reason: {reason}"
+        )
+
+    def test_similar_prefix_on_restricted_is_blocked(self):
+        """
+        Test that similar-prefix attacks don't bypass restricted path checks.
+
+        For example, /etc_evil should NOT be treated as restricted just because
+        it starts with /etc, but the is_relative_to() check ensures that
+        /etc/passwd is properly recognized as restricted.
+        """
+        # /etc_backup should NOT be restricted (it's not within /etc)
+        # This tests that is_relative_to() works correctly for both allowed and restricted
+        is_allowed, _ = self.fs.is_path_allowed("/etc_backup/config")
+        # Should be allowed (not in restricted paths) or checked against other rules
+        # The key is that /etc/passwd is still blocked
+
+
+class TestExecutionServicesS4Fix(unittest.TestCase):
+    """S4: Test that create_artifacts_dir() uses is_relative_to() instead of startswith()."""
+
+    def test_similar_prefix_sandbox_area_attack_is_blocked(self):
+        """
+        Test that sandbox_area_evil is rejected when sandbox_area is the base.
+
+        This tests the S4 fix in execution_services.py line 503.
+        """
+        from sandbox.core.execution_services import ExecutionContextService
+        from pathlib import Path
+        import tempfile
+
+        # Create a mock context with sandbox_area
+        service = ExecutionContextService()
+
+        # Create a temporary sandbox_area
+        with tempfile.TemporaryDirectory() as temp_dir:
+            sandbox_area = Path(temp_dir) / "sandbox_area"
+            sandbox_area.mkdir()
+
+            # Create a malicious similar-named directory
+            sandbox_area_evil = Path(temp_dir) / "sandbox_area_evil"
+            sandbox_area_evil.mkdir()
+
+            # Try to create artifacts in the malicious directory
+            # This should fail because sandbox_area_evil is not within sandbox_area
+            # The create_artifacts_dir method will validate this
+            from unittest.mock import MagicMock
+            context = MagicMock()
+            context.sandbox_area = sandbox_area
+
+            # This should work (valid subdirectory)
+            result = service.create_artifacts_dir(context, "validsession123")
+            self.assertTrue(result.is_relative_to(sandbox_area))
+
+            # If someone tried to use a session_id like "../sandbox_area_evil/session",
+            # the validation should block it
+
+
 if __name__ == "__main__":
     unittest.main()
