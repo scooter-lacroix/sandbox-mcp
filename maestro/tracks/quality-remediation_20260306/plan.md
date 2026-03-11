@@ -321,25 +321,14 @@ Ensure all acceptance criteria met and document improvements
     - All tests verify both transports have feature parity
     - Tests check for no duplicate classes or functions
 
-- [ ] Task: T1 — Implement per-session process isolation [DEFERRED TO SEPARATE TRACK]
+- [~] Task: T1 — Implement per-session process isolation [IN PROGRESS]
   - [x] Subtask: Write failing integration coverage for concurrent isolated sessions with separate cwd, env, globals, and artifacts [COMPLETED - TDD RED PHASE]
     - Created tests/integration/test_session_isolation_tdd.py with 10 TDD tests
     - All tests marked as xfail, documenting expected isolation behavior
-  - [ ] Subtask: Design the worker lifecycle for isolated execution and cleanup [DEFERRED]
-    - Requires significant architectural work:
-      - Worker pool manager for subprocess/workers
-      - Inter-process communication for code/results
-      - Resource management (CPU/memory per worker)
-      - Cleanup orchestration
-      - Changes throughout execution pipeline
-  - [ ] Subtask: Move execution out of shared `exec(code, ctx.execution_globals)` paths into isolated workers [DEFERRED]
-  - [ ] Subtask: Ensure artifact collection only reads mounted/output paths owned by the worker session [DEFERRED]
-  - [ ] Subtask: Ensure web-app child processes are tracked and cleaned up by worker/process group [DEFERRED]
-  - [ ] Subtask: Verify session isolation through concurrent regression tests [DEFERRED]
-
-    **NOTE:** Full process isolation is appropriately a separate track. The current
-    implementation provides session tracking through SessionService and PersistentExecutionContext.
-    Tier 1 security tasks can be addressed without full process isolation.
+  - [ ] Subtask: Move execution out of shared `exec(code, ctx.execution_globals)` paths into isolated execution contexts
+    - [ ] Subtask: Ensure each execution gets its own execution_globals dict (not shared)
+    - [ ] Subtask: Ensure each execution gets its own artifacts_dir (not shared)
+    - [ ] Subtask: Verify session isolation through concurrent regression tests
 
 ### Tier 1: Security Blockers (BLOCKED ON TIER 0)
 

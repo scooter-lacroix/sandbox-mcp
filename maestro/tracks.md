@@ -7,7 +7,7 @@ This file tracks all major tracks for the project. Each track has its own detail
 ## [~] Track: Complete Remediation - Fix critical issues, add tests, refactor architecture, and establish CI/CD
 *Link: [./maestro/tracks/quality-remediation_20260306/](./maestro/tracks/quality-remediation_20260306/)*
 
-**Status:** IN PROGRESS - Phase 10: Tzar Review Remediation (Tier 0 COMPLETE)
+**Status:** IN PROGRESS - Phase 10: Tzar Review Remediation (Tier 0: 2/3 complete, T1 in progress)
 
 **Completed Phases:**
 - Phase 1: Critical Syntax & Runtime Fixes [d94b818]
@@ -21,12 +21,13 @@ This file tracks all major tracks for the project. Each track has its own detail
 - Phase 9: Final Verification & Documentation [5dd9b4c]
 
 **Phase 10 Progress (Tzar Review Remediation):**
-- Tier 0: Architecture Blockers ✅ COMPLETE (2/3 tasks, 1 deferred)
+- Tier 0: Architecture Blockers (2/3 complete)
   - ✅ Task A1: Consolidate duplicate execution context implementations [534b091]
   - ✅ Task A2: Eliminate legacy HTTP/server divergence [81e1ff7]
-  - ⏸️ Task T1: Implement per-session process isolation [f80a9a6 - DEFERRED]
-- Tier 1: Security Blockers (READY TO START)
-  - ⏳ Task S1: Fix symlink-based host file exfiltration
+  - ⏳ Task T1: Implement per-session process isolation [IN PROGRESS]
+    - [x] Subtask: Write failing integration coverage (TDD RED) - 10 tests added
+    - [ ] Subtask: Move execution to per-context isolation (next)
+- Tier 1: Security Blockers (BLOCKED on Tier 0 T1 completion)
   - ⏳ Task S2: Fix session_id path traversal
   - ⏳ Task S3: Fix backup_name path traversal
   - ⏳ Task S4: Replace prefix-based path validation
@@ -51,6 +52,6 @@ This file tracks all major tracks for the project. Each track has its own detail
 - **Phase 10 A2:** Reduced HTTP server from 539 to 58 lines (89% reduction)
 - **Phase 10 A2:** Both transports now use shared tool_registry for all MCP tools
 - **Phase 10 A2:** Added transport-parity regression tests (14 tests)
-- **Phase 10 Tier 0:** Architecture Blockers COMPLETE (2/3 tasks, 1 deferred)
+- **Phase 10 Tier 0:** Architecture Blockers - 2/3 complete (A1, A2), T1 in progress
 
 **Known Limitations:** None - All identified limitations have been resolved.
