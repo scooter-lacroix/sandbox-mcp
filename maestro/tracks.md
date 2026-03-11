@@ -29,12 +29,13 @@ This file tracks all major tracks for the project. Each track has its own detail
     - [x] Subtask: Move execution to per-context isolation - 4/6 core tests passing
     - [x] Subtask: Fixed 3 critical bugs from code review
     - Note: 2 tests remain XFAIL (cwd, env_vars require process-level isolation)
-- Tier 1: Security Blockers (READY TO START)
-  - ⏳ Task S2: Fix session_id path traversal
-  - ⏳ Task S3: Fix backup_name path traversal
-  - ⏳ Task S4: Replace prefix-based path validation
-  - ⏳ Task S5: Resolve main execution-path security enforcement gap
-- Tier 2-5: Pending architecture blocker completion
+- Tier 1: Security Blockers (5/5 COMPLETE)
+  - ✅ Task S1: Fix symlink-based host file exfiltration
+  - ✅ Task S2: Fix session_id path traversal
+  - ✅ Task S3: Fix backup_name path traversal
+  - ✅ Task S4: Replace prefix-based path validation
+  - ✅ Task S5: Resolve main execution-path security enforcement gap
+- Tier 2: Correctness, Concurrency, and Shared-State Fixes (READY TO START)
 
 **Key Achievements:**
 - 329 tests passing (2 skipped) - up from 0 (includes 14 transport-parity tests + 10 TDD isolation tests)
@@ -55,5 +56,6 @@ This file tracks all major tracks for the project. Each track has its own detail
 - **Phase 10 A2:** Both transports now use shared tool_registry for all MCP tools
 - **Phase 10 A2:** Added transport-parity regression tests (14 tests)
 - **Phase 10 Tier 0:** Architecture Blockers - 3/3 COMPLETE (A1, A2, T1)
+- **Phase 10 Tier 1:** Security Blockers - 5/5 COMPLETE (S1, S2, S3, S4, S5)
 
 **Known Limitations:** None - All identified limitations have been resolved.
