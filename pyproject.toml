@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sandbox-mcp"
-version = "0.1.0"
+version = "0.4.0"
 description = "General-purpose Python execution sandbox with FastMCP tools, artifact capture, Manim rendering, and web demo workflows"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -49,12 +49,6 @@ test_artifact/
 .Trashes
 ehthumbs.db
 
-# Maestro & LeIndex (never commit these)
-.claude/
-.leindex/
-.omx/
-.mcp.json
-
 # Coverage reports
 .coverage
 coverage.json
@@ -62,6 +56,11 @@ coverage_output.txt
 htmlcov/
 .coverage.*
 
-# Internal development docs
+# Maestro & LeIndex (never commit these)
+.claude/
+.leindex/
+.omx/
+.mcp.json
+
+# Development-only docs (keep local, never push)
 COVERAGE_GAP_ANALYSIS.md
-maestro/

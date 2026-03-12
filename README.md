@@ -110,19 +110,43 @@ See [SECURITY.md](SECURITY.md) for detailed threat model and isolation strategie
 - Python 3.11+
 - uv (recommended) or pip
 
-### Method 1: Direct Git Installation (Recommended)
+### Method 1: Install from PyPI (Recommended)
 
-For immediate use with AI applications like LM Studio, Claude Desktop, or VS Code:
+Install the latest stable release from PyPI:
 
 ```bash
-uvx git+https://github.com/scooter-lacroix/sandbox-mcp.git
+# Using uv (fastest)
+uv pip install sandbox-mcp
+
+# Or using pip
+pip install sandbox-mcp
 ```
 
-This automatically installs and runs the MCP server without manual setup.
+For immediate use with AI applications:
 
-### Method 2: Local Development Installation
+```bash
+# Run directly with uvx
+uvx sandbox-mcp
+```
 
-For development, customization, or contributing:
+### Method 2: Direct Git Installation
+
+For the latest development version:
+
+```bash
+# Using uv
+uvx git+https://github.com/scooter-lacroix/sandbox-mcp.git
+
+# Or clone and install
+git clone https://github.com/scooter-lacroix/sandbox-mcp.git
+cd sandbox-mcp
+uv venv
+uv pip install -e .
+```
+
+### Method 3: Development Installation
+
+For contributing or customization:
 
 #### Using uv (Recommended)
 
@@ -130,7 +154,7 @@ For development, customization, or contributing:
 git clone https://github.com/scooter-lacroix/sandbox-mcp.git
 cd sandbox-mcp
 uv venv
-uv pip install -e .
+uv pip install -e ".[dev]"
 ```
 
 #### Using pip
@@ -139,23 +163,28 @@ uv pip install -e .
 git clone https://github.com/scooter-lacroix/sandbox-mcp.git
 cd sandbox-mcp
 python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# .venv\Scripts\activate  # Windows
-pip install -e .
+# On Linux/Mac:
+source .venv/bin/activate
+# On Windows:
+# .venv\\Scripts\\activate
+pip install -e ".[dev]"
 ```
 
-### Method 3: Package Installation
-
-Install from package manager after publishing to PyPI:
+### Verify Installation
 
 ```bash
-# Using uv
-uvx sandbox-mcp
+# Check version
+sandbox-mcp --version
 
-# Using pip
-pip install sandbox-mcp
+# Test HTTP server
+sandbox-server --help
+
+# Test stdio server
+sandbox-mcp --help
 ```
 
+
+## 🖥️ Usage
 ## 🖥️ Usage
 
 ### Command Line Interface
