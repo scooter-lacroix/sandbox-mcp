@@ -46,6 +46,9 @@ def monkey_patch_matplotlib(ctx: Any, logger: Any) -> bool:
 
     Security C1: Captures session-specific artifacts_dir to prevent cross-session leakage.
     Delegates to PatchManager for unified implementation.
+
+    CRIT-4: Thread-local storage is set by the patching function, ensuring
+    the patched function uses the correct artifacts_dir for the current session.
     """
     try:
         artifacts_dir = Path(ctx.artifacts_dir) if ctx.artifacts_dir else None
@@ -61,6 +64,9 @@ def monkey_patch_pil(ctx: Any, logger: Any) -> bool:
 
     Security C1: Captures session-specific artifacts_dir to prevent cross-session leakage.
     Delegates to PatchManager for unified implementation.
+
+    CRIT-4: Thread-local storage is set by the patching function, ensuring
+    the patched function uses the correct artifacts_dir for the current session.
     """
     try:
         artifacts_dir = Path(ctx.artifacts_dir) if ctx.artifacts_dir else None
@@ -68,6 +74,26 @@ def monkey_patch_pil(ctx: Any, logger: Any) -> bool:
     except Exception as exc:
         logger.error(f"Critical error in PIL monkey patch: {exc}")
         return False
+
+
+def _set_session_artifacts_dir(ctx: Any, logger: Any) -> None:
+    """
+    CRIT-4: Set thread-local artifacts_dir for the current session.
+
+    This ensures that patched matplotlib/PIL functions use the correct
+    artifacts_dir for the current session, even if the patches were
+    applied for a different session.
+
+    This must be called before each execution to ensure the correct
+    artifacts_dir is set in thread-local storage.
+    """
+    try:
+        from sandbox.core.patching import _current_session_artifacts_dir
+        if ctx.artifacts_dir:
+            _current_session_artifacts_dir.set(Path(ctx.artifacts_dir))
+            logger.debug(f"Set session artifacts_dir: {ctx.artifacts_dir}")
+    except Exception as exc:
+        logger.error(f"Error setting session artifacts_dir: {exc}")
 
 
 def collect_artifacts(ctx: Any, logger: Any) -> List[Dict[str, Any]]:
@@ -205,6 +231,9 @@ def execute(
 
     matplotlib_patched = monkey_patch_matplotlib(ctx, logger)
     pil_patched = monkey_patch_pil(ctx, logger)
+
+    # CRIT-4: Set thread-local artifacts_dir for this session
+    _set_session_artifacts_dir(ctx, logger)
 
     old_stdout, old_stderr = sys.stdout, sys.stderr
     stdout_capture = io.StringIO()
@@ -429,6 +458,9 @@ def execute_with_artifacts(
 
     matplotlib_patched = monkey_patch_matplotlib(ctx, logger)
     pil_patched = monkey_patch_pil(ctx, logger)
+
+    # CRIT-4: Set thread-local artifacts_dir for this session
+    _set_session_artifacts_dir(ctx, logger)
 
     # I4 FIX: Use lightweight artifact tracking instead of full context
     artifacts_root = Path(artifacts_dir)

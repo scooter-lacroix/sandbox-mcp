@@ -16,6 +16,7 @@ from .core.execution_services import ExecutionContext
 from .core.resource_manager import get_resource_manager
 from .core.security import SecurityLevel, get_security_manager
 from .server.catalog import SERVER_ID, SERVER_INSTRUCTIONS, register_catalog_primitives
+from .server.session_service import get_session_service
 from .server.tool_registry import create_tool_registry
 from . import __version__
 
@@ -33,6 +34,7 @@ ctx._setup_environment()
 
 resource_manager = get_resource_manager()
 security_manager = get_security_manager(SecurityLevel.MEDIUM)
+session_service = get_session_service()
 
 # Create tool registry and register all tools (same as stdio server)
 tool_registry = create_tool_registry(
@@ -42,6 +44,7 @@ tool_registry = create_tool_registry(
     resource_manager=resource_manager,
     security_manager=security_manager,
     persistent_context_factory=PersistentExecutionContext,
+    session_service=session_service,
 )
 tool_registry.register_all()
 register_catalog_primitives(mcp)

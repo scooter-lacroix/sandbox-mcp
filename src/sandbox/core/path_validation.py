@@ -90,6 +90,60 @@ class PathValidator:
         return False
     
     @staticmethod
+    def sanitize_path_component(component: str) -> str:
+        """
+        Sanitize a string for use as a path component.
+
+        Security CRIT-1: Prevents path traversal attacks via session_id or
+        other user-provided path components. Rejects strings that would escape
+        their intended directory.
+
+        Args:
+            component: The string to sanitize.
+
+        Returns:
+            The sanitized string (same as input if valid).
+
+        Raises:
+            ValueError: If component contains path traversal patterns.
+
+        Examples:
+            >>> PathValidator.sanitize_path_component("session_123")
+            'session_123'
+            >>> PathValidator.sanitize_path_component("../escape")
+            ValueError: Path component contains invalid characters
+        """
+        if not component:
+            raise ValueError("Path component cannot be empty")
+
+        # Strip whitespace
+        stripped = component.strip()
+        if not stripped:
+            raise ValueError("Path component cannot be empty or whitespace only")
+
+        # Reject path traversal sequences
+        if ".." in stripped:
+            raise ValueError("Path component contains '..' (path traversal)")
+
+        # Reject absolute paths (Unix)
+        if stripped.startswith("/"):
+            raise ValueError("Path component cannot be absolute path")
+
+        # Reject absolute paths (Windows drive letters)
+        if len(stripped) >= 2 and stripped[1] == ":":
+            raise ValueError("Path component cannot be absolute path")
+
+        # Reject path separators (after absolute path check for clearer errors)
+        if "/" in stripped or "\\" in stripped:
+            raise ValueError("Path component contains path separators")
+
+        # Reject leading dots (hidden files that could be used for traversal)
+        if stripped.startswith("."):
+            raise ValueError("Path component cannot start with '.'")
+
+        return stripped
+
+    @staticmethod
     def _is_within_base(path: Path, base: Path) -> bool:
         """
         Check if path is within base directory.

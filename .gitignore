@@ -54,3 +54,14 @@ ehthumbs.db
 .leindex/
 .omx/
 .mcp.json
+
+# Coverage reports
+.coverage
+coverage.json
+coverage_output.txt
+htmlcov/
+.coverage.*
+
+# Internal development docs
+COVERAGE_GAP_ANALYSIS.md
+maestro/

@@ -3,6 +3,7 @@ Local sandbox implementation for the enhanced Sandbox SDK.
 """
 
 import io
+import json
 import sys
 import os
 import traceback

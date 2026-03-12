@@ -5,14 +5,45 @@ This module consolidates duplicate monkey-patching logic from both
 MCP servers for matplotlib and PIL.
 
 Security C1: Provides session-isolated patching to prevent cross-session leakage.
+
+CRIT-4 Fix: Uses thread-local storage to track current session's artifacts_dir,
+ensuring patched functions dynamically look up the correct directory for each session.
 """
 
+import threading
 from pathlib import Path
-from typing import Optional, Any, Dict, Tuple
+from typing import Optional, Any, Dict
 import logging
 import uuid
 
 logger = logging.getLogger(__name__)
+
+
+# CRIT-4: Thread-local storage for current session's artifacts_dir
+# This ensures that each thread can have its own artifacts_dir,
+# and the patched functions dynamically look up the correct directory.
+class _SessionArtifactsDir:
+    """Thread-local storage for session-specific artifacts directories."""
+
+    def __init__(self):
+        self._storage = threading.local()
+
+    def set(self, artifacts_dir: Path) -> None:
+        """Set the artifacts directory for the current thread/session."""
+        self._storage.dir = str(artifacts_dir)
+
+    def get(self) -> Optional[str]:
+        """Get the artifacts directory for the current thread/session."""
+        return getattr(self._storage, 'dir', None)
+
+    def clear(self) -> None:
+        """Clear the artifacts directory for the current thread/session."""
+        if hasattr(self._storage, 'dir'):
+            delattr(self._storage, 'dir')
+
+
+# Global instance for thread-local artifacts_dir tracking
+_current_session_artifacts_dir = _SessionArtifactsDir()
 
 
 class PatchManager:
@@ -21,9 +52,12 @@ class PatchManager:
 
     This class provides unified patching for matplotlib and PIL,
     replacing duplicate logic in both MCP servers.
-    
+
     Security C1: Patches capture session-specific state to prevent
     cross-session artifact leakage.
+
+    CRIT-4: Uses thread-local storage to ensure patched functions
+    dynamically look up the correct artifacts_dir for the current session.
     """
 
     def __init__(self):
@@ -55,8 +89,11 @@ class PatchManager:
     def patch_matplotlib(self, artifacts_dir: Optional[Path] = None, session_id: Optional[str] = None) -> bool:
         """
         Apply matplotlib patches for artifact capture.
-        
+
         Security C1: Captures session-specific artifacts_dir to prevent leakage.
+
+        CRIT-4: Uses thread-local storage so patched functions dynamically
+        look up the current session's artifacts_dir.
 
         Args:
             artifacts_dir: Optional directory for saving plots.
@@ -68,26 +105,32 @@ class PatchManager:
         try:
             import matplotlib
             matplotlib.use('Agg', force=True)
-            
+
             import matplotlib.pyplot as plt
-            
+
             if getattr(plt.show, "_sandbox_patched", False):
                 logger.debug("matplotlib already patched")
+                # CRIT-4: Even if already patched, update thread-local storage
+                if artifacts_dir:
+                    _current_session_artifacts_dir.set(artifacts_dir)
                 return True
-            
+
             # Store original function
             self._original_functions['plt_show'] = plt.show
-            
-            # C1: Capture session-specific state
-            session_artifacts_dir = str(artifacts_dir) if artifacts_dir else None
-            
+
             def patched_show(*args: Any, **kwargs: Any) -> Any:
-                """Patched plt.show with session-isolated artifact saving."""
+                """Patched plt.show with dynamic session-isolated artifact saving.
+
+                CRIT-4: Dynamically looks up the current session's artifacts_dir
+                from thread-local storage instead of capturing it in the closure.
+                """
                 try:
-                    if session_artifacts_dir:
-                        plots_dir = Path(session_artifacts_dir) / "plots"
+                    # CRIT-4: Get artifacts_dir from thread-local storage
+                    current_dir = _current_session_artifacts_dir.get()
+                    if current_dir:
+                        plots_dir = Path(current_dir) / "plots"
                         plots_dir.mkdir(parents=True, exist_ok=True)
-                        
+
                         for ext, format_name in [("png", "PNG"), ("svg", "SVG"), ("pdf", "PDF")]:
                             try:
                                 save_path = plots_dir / f"plot_{uuid.uuid4().hex[:8]}.{ext}"
@@ -98,13 +141,16 @@ class PatchManager:
                                 continue
                 except Exception as exc:
                     logger.error(f"Error in patched_show: {exc}")
-                
+
                 return self._original_functions['plt_show'](*args, **kwargs)
-            
+
             patched_show._sandbox_patched = True
-            patched_show._session_artifacts_dir = session_artifacts_dir
             plt.show = patched_show
-            
+
+            # CRIT-4: Set thread-local storage for this session
+            if artifacts_dir:
+                _current_session_artifacts_dir.set(artifacts_dir)
+
             self._patches_applied['matplotlib'] = True
             if session_id:
                 self._session_patches.setdefault(session_id, {})['matplotlib'] = True
@@ -120,8 +166,11 @@ class PatchManager:
     def patch_pil(self, artifacts_dir: Optional[Path] = None, session_id: Optional[str] = None) -> bool:
         """
         Apply PIL/Image patches for artifact capture.
-        
+
         Security C1: Captures session-specific artifacts_dir to prevent leakage.
+
+        CRIT-4: Uses thread-local storage so patched functions dynamically
+        look up the current session's artifacts_dir.
 
         Args:
             artifacts_dir: Optional directory for saving images.
@@ -135,40 +184,54 @@ class PatchManager:
 
             if getattr(Image.Image.show, "_sandbox_patched", False):
                 logger.debug("PIL already patched")
+                # CRIT-4: Even if already patched, update thread-local storage
+                if artifacts_dir:
+                    _current_session_artifacts_dir.set(artifacts_dir)
                 return True
 
             # Store original functions
             self._original_functions['pil_show'] = Image.Image.show
             self._original_functions['pil_save'] = Image.Image.save
-            
-            # C1: Capture session-specific state
-            session_artifacts_dir = str(artifacts_dir) if artifacts_dir else None
 
-            def patched_show(self_img: Any, title: Any = None, command: Any = None) -> Any:
-                """Patched Image.show with session-isolated artifact saving."""
-                if session_artifacts_dir:
-                    images_dir = Path(session_artifacts_dir) / "images"
+            def patched_show(self_img: Any, *args: Any, **kwargs: Any) -> Any:
+                """Patched Image.show with dynamic session-isolated artifact saving.
+
+                CRIT-4: Dynamically looks up the current session's artifacts_dir
+                from thread-local storage instead of capturing it in the closure.
+                """
+                current_dir = _current_session_artifacts_dir.get()
+                if current_dir:
+                    images_dir = Path(current_dir) / "images"
                     images_dir.mkdir(parents=True, exist_ok=True)
                     image_path = images_dir / f"image_{uuid.uuid4().hex[:8]}.png"
                     self_img.save(image_path)
                     logger.info(f"Image saved: {image_path}")
-                return self._original_functions['pil_show'](self_img, title, command)
+                return self._original_functions['pil_show'](self_img, *args, **kwargs)
 
             def patched_save(self_img: Any, fp: Any, format: Any = None, **params: Any) -> Any:
-                """Patched Image.save with session-aware logging."""
+                """Patched Image.save with session-aware logging.
+
+                Security CRIT-5: Uses is_relative_to() instead of startswith()
+                to prevent similar-prefix path attacks.
+
+                CRIT-4: Uses thread-local storage to get current session's artifacts_dir.
+                """
                 result = self._original_functions['pil_save'](self_img, fp, format, **params)
-                if session_artifacts_dir and str(fp).startswith(session_artifacts_dir):
+                current_dir = _current_session_artifacts_dir.get()
+                if current_dir and Path(fp).resolve().is_relative_to(Path(current_dir).resolve()):
                     logger.info(f"Image saved to artifacts: {fp}")
                 return result
 
             patched_show._sandbox_patched = True
-            patched_show._session_artifacts_dir = session_artifacts_dir
             patched_save._sandbox_patched = True
-            patched_save._session_artifacts_dir = session_artifacts_dir
-            
+
             Image.Image.show = patched_show
             Image.Image.save = patched_save
-            
+
+            # CRIT-4: Set thread-local storage for this session
+            if artifacts_dir:
+                _current_session_artifacts_dir.set(artifacts_dir)
+
             self._patches_applied['pil'] = True
             if session_id:
                 self._session_patches.setdefault(session_id, {})['pil'] = True
@@ -201,11 +264,15 @@ class PatchManager:
     def cleanup_session_patches(self, session_id: str) -> None:
         """
         Cleanup patches for a specific session.
-        
+
         Security C1: Allows per-session patch cleanup.
+
+        CRIT-4: Clears thread-local storage for the session.
         """
         if session_id in self._session_patches:
             del self._session_patches[session_id]
+        # CRIT-4: Clear thread-local storage
+        _current_session_artifacts_dir.clear()
         logger.debug(f"Cleaned up patches for session: {session_id}")
 
     def cleanup(self) -> None:
@@ -219,7 +286,7 @@ class PatchManager:
                 del self._original_functions['pil_show']
                 del self._original_functions['pil_save']
                 logger.info("Restored original PIL methods")
-            
+
             # Restore matplotlib if it was patched
             if 'plt_show' in self._original_functions:
                 import matplotlib.pyplot as plt
@@ -231,6 +298,8 @@ class PatchManager:
 
         self._patches_applied.clear()
         self._session_patches.clear()
+        # CRIT-4: Clear thread-local storage
+        _current_session_artifacts_dir.clear()
 
     def unpatch_all(self) -> None:
         """Alias for cleanup()."""
@@ -248,7 +317,7 @@ class PatchManager:
     def get_session_patch_status(self, session_id: str) -> Dict[str, bool]:
         """
         Get status of patches for a specific session.
-        
+
         Security C1: Track per-session patch state.
         """
         return self._session_patches.get(session_id, {}).copy()
@@ -261,7 +330,7 @@ _patch_manager: Optional[PatchManager] = None
 def get_patch_manager() -> PatchManager:
     """
     Get the global patch manager instance.
-    
+
     Returns:
         The singleton PatchManager instance.
     """

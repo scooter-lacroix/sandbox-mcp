@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .execution_services import ExecutionContext
+from .path_validation import PathValidator
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,9 @@ class SessionExecutionContextManager:
             if session_id not in self._contexts:
                 ctx = ExecutionContext(project_root=self._project_root)
                 # Create session-specific artifacts directory
-                session_artifacts_dir = ctx.sandbox_area / session_id / "artifacts"
+                # CRIT-1: Sanitize session_id to prevent path traversal
+                safe_session_id = PathValidator.sanitize_path_component(session_id)
+                session_artifacts_dir = ctx.sandbox_area / safe_session_id / "artifacts"
                 session_artifacts_dir.mkdir(parents=True, exist_ok=True)
                 ctx.artifacts_dir = session_artifacts_dir
                 self._contexts[session_id] = ctx

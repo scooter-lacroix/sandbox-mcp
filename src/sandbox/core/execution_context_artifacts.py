@@ -85,6 +85,10 @@ def categorize_artifacts(artifacts_dir: Path) -> Dict[str, List[Dict[str, Any]]]
     }
 
     for file_path in artifacts_dir.rglob('*'):
+        # SECURITY CRIT-3: Skip symlinks to prevent host file exfiltration
+        if file_path.is_symlink():
+            logger.warning(f"Skipping symlink in artifacts: {file_path}")
+            continue
         if not file_path.is_file():
             continue
 

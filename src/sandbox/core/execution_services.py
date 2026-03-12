@@ -216,43 +216,13 @@ class ExecutionContext:
         return get_backup_service().rollback_artifacts(self, backup_name)
 
     def get_backup_info(self, backup_name: str) -> Dict[str, Any]:
-        """Get detailed information about a specific backup."""
-        import logging
+        """
+        Delegate to ArtifactBackupService for backup info.
 
-        logger = logging.getLogger(__name__)
-        backup_root = self.project_root / "artifact_backups"
-        backup_path = backup_root / backup_name
-
-        if not backup_path.exists():
-            return {"error": f"Backup '{backup_name}' not found"}
-
-        try:
-            stat = backup_path.stat()
-            files = list(backup_path.rglob("*"))
-
-            categories: Dict[str, List[Dict[str, Any]]] = {}
-            for file_path in files:
-                if file_path.is_file():
-                    category = file_path.parent.name
-                    categories.setdefault(category, []).append(
-                        {
-                            "name": file_path.name,
-                            "size": file_path.stat().st_size,
-                            "extension": file_path.suffix,
-                        }
-                    )
-
-            return {
-                "name": backup_name,
-                "path": str(backup_path),
-                "created": stat.st_ctime,
-                "modified": stat.st_mtime,
-                "total_files": len([f for f in files if f.is_file()]),
-                "total_size_bytes": sum(f.stat().st_size for f in files if f.is_file()),
-                "categories": categories,
-            }
-        except Exception as e:
-            return {"error": f"Failed to get backup info: {str(e)}"}
+        Security CRIT-2 fix: Uses hardened path validation from
+        ArtifactBackupService to prevent path traversal attacks.
+        """
+        return get_backup_service().get_backup_info(self, backup_name)
 
 
 class ExecutionContextService:
