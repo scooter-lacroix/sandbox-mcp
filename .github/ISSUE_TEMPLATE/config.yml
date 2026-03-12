@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/scooter-lacroix/sandbox-mcp/blob/main/README.md
+    about: Check the documentation before opening an issue
+  - name: Security Policy
+    url: https://github.com/scooter-lacroix/sandbox-mcp/blob/main/SECURITY.md
+    about: Review the security policy before reporting security issues
+  - name: FAQ
+    url: https://github.com/scooter-lacroix/sandbox-mcp/blob/main/docs/FAQ_AND_LIMITATIONS.md
+    about: Check the FAQ for answers to common questions
+  - name: Discussions
+    url: https://github.com/scooter-lacroix/sandbox-mcp/discussions
+    about: Ask questions and discuss ideas with the community
