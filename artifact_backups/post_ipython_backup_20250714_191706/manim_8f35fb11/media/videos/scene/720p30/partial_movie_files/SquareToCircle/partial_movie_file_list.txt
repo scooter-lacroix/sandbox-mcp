@@ -1,3 +1,0 @@
-# This file is used internally by FFMPEG.
-file 'file:/home/stan/Prod/sandbox/artifacts/session_20250714_191702_dd2b6c19/manim_8f35fb11/media/videos/scene/720p30/partial_movie_files/SquareToCircle/2016333726_1911431882_557880437.mp4'
-file 'file:/home/stan/Prod/sandbox/artifacts/session_20250714_191702_dd2b6c19/manim_8f35fb11/media/videos/scene/720p30/partial_movie_files/SquareToCircle/543634251_2834709167_2415538917.mp4'
