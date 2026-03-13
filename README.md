@@ -24,16 +24,33 @@ See the Sandbox MCP server creating beautiful mathematical animations with Manim
 
 ## 🚀 Quick Start
 
+### One-Line Install (Recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/scooter-lacroix/sandbox-mcp/main/install.sh | bash
+```
+
+This will:
+- Install sandbox-mcp globally using `uv tool`
+- Auto-configure all detected MCP clients (Claude, Cursor, Windsurf, VS Code, Zed, etc.)
+- Star the repository
+- Work with externally-managed Python environments
+
+### Manual Install
+
 ```bash
 # Clone the repository
 git clone https://github.com/scooter-lacroix/sandbox-mcp.git
 cd sandbox-mcp
 
-# Install with uv (recommended)
+# Install globally with uv tool
+uv tool install --force --editable .
+
+# Or install in venv
 uv venv && uv pip install -e .
 
 # Run the MCP server
-uv run sandbox-server-stdio
+sandbox-server-stdio
 ```
 
 ## ✨ Features
