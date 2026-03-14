@@ -83,7 +83,16 @@ TOOL_METADATA: dict[str, dict[str, Any]] = {
         "tags": {"shell", "execution", "security"},
     },
     "create_manim_animation": {
-        "description": "Render a Manim Community animation from provided scene code and return output metadata.",
+        "description": (
+            "Render a Manim Community animation from provided scene code.\n\n"
+            "CRITICAL GUARDRAILS:\n"
+            "1. PIPELINE: Treat this tool as part of a pipeline. Plan all clips upfront. Generate Manim clips with contracts. Validate resolution/duration. Then call `create_ffmpeg_video`.\n"
+            "2. OBJECT PERMANENCE: Objects MUST NOT disappear without an explicit `FadeOut` or `Uncreate`. Implicit removal is FORBIDDEN. If part of a sequence, specify entry/exit states as contracts with adjacent clips.\n"
+            "3. SPATIAL COHERENCE: Respect 1920x1080 safe zones (90%). NO overlapping text/objects unless intentional. Use EXPLICIT anchors (`UP`, `DOWN`, relative bounds), NEVER defaults.\n"
+            "4. PROGRESSION LOGIC: Visual complexity must scale monotonically unless deliberately reset.\n"
+            "5. STYLE CONSTANTS: Font, palette, and timing profiles must be declared once per VIDEO PLAN, not per clip.\n"
+            "6. COMPATIBILITY: Manim v0.19.0 `random_color()` takes NO arguments. To pick from a list, define an array and sample it (e.g. `colors[np.random.randint(0, len(colors))]`)."
+        ),
         "tags": {"manim", "animation", "video"},
     },
     "list_manim_animations": {
@@ -177,6 +186,20 @@ TOOL_METADATA: dict[str, dict[str, Any]] = {
     "get_comprehensive_help": {
         "description": "Return a structured usage guide covering execution, artifacts, packages, web apps, and Manim.",
         "tags": {"help", "examples", "guide"},
+    },
+    "create_ffmpeg_video": {
+        "description": (
+            "Wrap FFmpeg CLI to concatenate clips, add audio, burn subtitles, and normalize resolution/framerate.\n\n"
+            "PRE-FLIGHT VALIDATION (Must verify before calling):\n"
+            "1. All input clips MUST share the same resolution and framerate. Resample if necessary using FFmpeg arguments.\n"
+            "2. Audio duration MUST NOT exceed total video duration. Always truncate audio to fit, never truncate video silently.\n"
+            "3. Codec output MUST target `h264` and `aac` for broad compatibility.\n\n"
+            "STITCHING RULES:\n"
+            "1. Use a standard `concat` demuxer file list for lossless joining of same-format clips (not the `concat` filter).\n"
+            "2. Default to clean cuts. Crossfade is opt-in.\n"
+            "3. Use `-c copy` where possible. Re-encode ONLY when resolution/codec normalization strictly requires it.\n"
+        ),
+        "tags": {"ffmpeg", "video", "editing", "concatenation"},
     },
 }
 

@@ -406,8 +406,15 @@ def execute(
     finally:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
-        result["stdout"] += stdout_capture.getvalue()
-        result["stderr"] += stderr_capture.getvalue()
+        
+        # If there's an error, keep both for debugging. If successful, clear to save tokens.
+        if result["error"] is None:
+            result["stdout"] += "Code executed successfully.\n"
+            # Keep stderr if it has warnings, but avoid massive logs
+        else:
+            result["stdout"] += stdout_capture.getvalue()
+            result["stderr"] += stderr_capture.getvalue()
+            
         result["artifacts"] = collect_artifacts(ctx, logger)
 
     return json.dumps(result, indent=2)
@@ -519,8 +526,12 @@ def execute_with_artifacts(
         sys.stdout = old_stdout
         sys.stderr = old_stderr
 
-        result["stdout"] = stdout_capture.getvalue()
-        result["stderr"] += stderr_capture.getvalue()
+        # If there's an error, keep both for debugging. If successful, clear to save tokens.
+        if result["error"] is None:
+            result["stdout"] = "Code executed successfully."
+        else:
+            result["stdout"] = stdout_capture.getvalue()
+            result["stderr"] += stderr_capture.getvalue()
 
         # I4 FIX: Lightweight artifact diff without full context
         if track_artifacts:

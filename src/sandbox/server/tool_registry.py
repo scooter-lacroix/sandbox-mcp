@@ -47,6 +47,7 @@ from .info_helpers import (
 from .info_helpers import (
     get_execution_info as get_execution_info_helper,
 )
+from .ffmpeg_helpers import create_ffmpeg_video as create_ffmpeg_video_helper
 from .manim_helpers import cleanup_manim_animation as cleanup_manim_animation_helper
 from .manim_helpers import create_manim_animation as create_manim_animation_helper
 from .manim_helpers import list_manim_animations as list_manim_animations_helper
@@ -125,6 +126,7 @@ class ToolRegistry:
         self.register_cleanup_temp_artifacts()
         self.register_shell_execute()
         self.register_create_manim_animation()
+        self.register_create_ffmpeg_video()
         self.register_list_manim_animations()
         self.register_cleanup_manim_animation()
         self.register_get_manim_examples()
@@ -253,6 +255,27 @@ class ToolRegistry:
                 ctx=self.ctx,
                 logger=self.logger,
                 quality=quality,
+            )
+
+    def register_create_ffmpeg_video(self) -> None:
+        @self._tool("create_ffmpeg_video")
+        def create_ffmpeg_video(
+            input_clips: list[str],
+            audio_path: str | None = None,
+            subtitle_path: str | None = None,
+            resolution: str = "1920x1080",
+            framerate: int = 60,
+            output_filename: str = "final_render.mp4",
+        ) -> str:
+            return create_ffmpeg_video_helper(
+                input_clips=input_clips,
+                ctx=self.ctx,
+                logger=self.logger,
+                audio_path=audio_path,
+                subtitle_path=subtitle_path,
+                resolution=resolution,
+                framerate=framerate,
+                output_filename=output_filename,
             )
 
     def register_list_manim_animations(self) -> None:

@@ -14,6 +14,7 @@ import traceback
 from typing import Any, Optional
 
 
+
 def shell_execute(
     command: str,
     security_manager: Any,
@@ -108,8 +109,13 @@ def shell_execute(
             env=os.environ.copy(),
         )
 
-        result["stdout"] = process.stdout
-        result["stderr"] = process.stderr
+        if process.returncode == 0:
+            result["stdout"] = "Command executed successfully."
+            result["stderr"] = ""
+        else:
+            result["stdout"] = process.stdout
+            result["stderr"] = process.stderr
+
         result["return_code"] = process.returncode
 
         if process.returncode != 0:

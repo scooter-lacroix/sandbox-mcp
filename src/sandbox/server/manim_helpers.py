@@ -130,6 +130,9 @@ def execute_manim_code(
                 scene_matches = re.findall(r"Scene: ([A-Za-z0-9_]+)", result["output"])
                 result["scenes_found"] = scene_matches
 
+                # Clear output on success to save tokens
+                result["output"] = "Manim animation generated successfully."
+
                 if not video_files and not image_files:
                     result["error"] = "No output files generated"
             else:
@@ -137,6 +140,8 @@ def execute_manim_code(
         else:
             result["success"] = False
             result["error"] = process.stderr or "Manim execution failed"
+            # Keep original output for debugging on failure
+
 
     except subprocess.TimeoutExpired:
         result["error"] = "Manim execution timed out (5 minutes)"
